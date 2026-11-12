@@ -30,7 +30,8 @@ Color strategy: restrained board with one committed signal color. Yellow means "
 
 - **Referee lights**: three 20px circles. Off `--light-off` inset; on white with soft white light; record = yellow. Light up staggered 0/110/220ms, 320ms ease-out; turn off after 1.5s (2.6s for a record). This is the only glow in the system: it depicts real lamps.
 - **Dial**: 64×64 step buttons (radius 16) flanking an editable number; unit centred under the figure. Weight increments 1 / 2,5 / 5 kg, persisted per device.
-- **Chips**: 48px pills, recent exercises first, count of today's sets in yellow figures. Active = white fill.
+- **Rutina del día**: while a day has no routine and no sets, Hoy asks "¿Qué rutina toca hoy?" with Oswald chips (Push, Pull, Pierna, Upper, Lower, Full body, + Otra). Once chosen it becomes a yellow-outline pill in the top bar that reopens the routine sheet. Exercises done on earlier days of the same routine are offered first.
+- **Chips**: 48px pills, "Agregar ejercicio" (dashed yellow) always first, recent exercises first, count of today's sets in yellow figures. Active = white fill.
 - **CTA**: full-width 64px yellow bar, radius 16, fixed above the tab bar, label states the set number ("Anotar serie 3").
 - **Tab bar**: 4 tabs (Hoy, Historial, Calendario, Progreso), 68px + safe area, active icon yellow.
 - **Calendar**: Monday-first 7-col grid of circles; trained = white disc, record day = yellow disc, today = outline ring, selected = yellow ring.

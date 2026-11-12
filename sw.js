@@ -1,5 +1,5 @@
 /* Service worker: guarda la app en el teléfono para que funcione sin internet. */
-const CACHE = "gymtracker-v1";
+const CACHE = "gymtracker-v2";
 const ASSETS = [
   "./",
   "index.html",

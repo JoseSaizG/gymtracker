@@ -8,6 +8,7 @@
     "Dominadas", "Jalón al pecho", "Press inclinado con mancuernas", "Prensa de piernas",
     "Hip thrust", "Zancadas", "Curl de bíceps", "Extensión de tríceps", "Elevaciones laterales", "Fondos"
   ];
+  const DEFAULT_DAY_TYPES = ["Push", "Pull", "Pierna", "Upper", "Lower", "Full body"];
 
   /* ---------- Utilidades ---------- */
   const $ = (s, el = document) => el.querySelector(s);
@@ -33,9 +34,29 @@
   function load() {
     try {
       const raw = JSON.parse(localStorage.getItem(STORE_KEY));
-      if (raw && Array.isArray(raw.sets)) return { version: 1, sets: raw.sets, exercises: raw.exercises || [] };
+      if (raw && Array.isArray(raw.sets)) return normalize(raw);
     } catch (e) { /* datos dañados: empezar limpio */ }
-    return { version: 1, sets: [], exercises: [] };
+    return normalize({});
+  }
+  function normalize(raw) {
+    const days = {};
+    if (raw.days && typeof raw.days === "object") {
+      for (const [d, v] of Object.entries(raw.days)) {
+        if (/^\d{4}-\d{2}-\d{2}$/.test(d) && v && typeof v.type === "string" && v.type.trim()) days[d] = { type: v.type.trim().slice(0, 40) };
+      }
+    }
+    return {
+      version: 1,
+      sets: raw.sets || [],
+      exercises: Array.isArray(raw.exercises) ? raw.exercises.filter((x) => typeof x === "string") : [],
+      days,
+      dayTypes: Array.isArray(raw.dayTypes) ? raw.dayTypes.filter((x) => typeof x === "string" && x.trim()) : [],
+    };
+  }
+  const dayType = (date) => (data.days[date] ? data.days[date].type : null);
+  function allDayTypes() {
+    const used = Object.values(data.days).map((d) => d.type);
+    return [...new Set([...DEFAULT_DAY_TYPES, ...data.dayTypes, ...used])];
   }
   function save() {
     try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); }
@@ -109,6 +130,7 @@
     $("#ctaWrap").hidden = view !== "hoy";
     $("#dateBtn").hidden = view !== "hoy";
     $("#sessionTag").hidden = view !== "hoy";
+    if (view !== "hoy") $("#typeBtn").hidden = true;
     render();
     window.scrollTo(0, 0);
   }
@@ -137,6 +159,11 @@
     const idx = dates.indexOf(ui.date);
     const n = idx >= 0 ? idx + 1 : dates.filter((d) => d < ui.date).length + 1;
     $("#sessionTag").innerHTML = `Sesión <b>${n}</b>`;
+
+    const type = dayType(ui.date);
+    const tb = $("#typeBtn");
+    tb.hidden = ui.view !== "hoy" || !type;
+    tb.textContent = type || "";
   }
   $("#dateBtn").addEventListener("click", (e) => {
     const input = $("#dateInput");
@@ -177,25 +204,48 @@
     renderHoy();
   }
 
+  /** Ejercicios hechos en días anteriores con la misma rutina, del más reciente al más antiguo. */
+  function exercisesForType(type) {
+    if (!type) return [];
+    const dates = Object.keys(data.days).filter((d) => d < ui.date && data.days[d].type === type).sort().reverse();
+    const out = [];
+    for (const d of dates) for (const s of setsOn(d)) if (!out.includes(s.exercise)) out.push(s.exercise);
+    return out;
+  }
+
   function renderHoy() {
     const day = setsOn(ui.date);
     const { used } = knownExercises();
+    const type = dayType(ui.date);
+    const typeEx = exercisesForType(type);
+
+    // rutina del día: se pregunta mientras el día no tenga una ni series
+    const ask = !type && !day.length;
+    $("#typePicker").hidden = !ask;
+    if (ask) {
+      $("#typeQ").textContent = ui.date === todayISO() ? "¿Qué rutina toca hoy?" : "¿Qué rutina hiciste ese día?";
+      $("#typeChips").innerHTML = allDayTypes().map((t) => `<button type="button" class="chip" data-type="${esc(t)}">${esc(t)}</button>`).join("") +
+        `<button type="button" class="chip is-add" data-type-other><svg class="ic"><use href="#i-plus"/></svg>Otra</button>`;
+    }
+
     if (!ui.exercise) {
       const lastToday = day[day.length - 1];
-      ui.exercise = lastToday ? lastToday.exercise : used[0] || null;
+      // con rutina elegida y sin series, el usuario elige el primer ejercicio
+      ui.exercise = lastToday ? lastToday.exercise : type ? null : used[0] || null;
       if (ui.exercise) prefill(ui.exercise);
     }
     const { prIds } = computeRecords();
 
-    // chips: recientes + los de hoy primero
+    // chips: los de hoy, luego los de la misma rutina, luego recientes
     const todayEx = [...new Set(day.map((s) => s.exercise))];
-    const chipList = [...new Set([...todayEx, ...used, ...(used.length < 4 ? DEFAULT_EXERCISES.slice(0, 4) : [])])].slice(0, 12);
+    const chipList = [...new Set([...todayEx, ...typeEx, ...used, ...(used.length < 4 ? DEFAULT_EXERCISES.slice(0, 4) : [])])].slice(0, 14);
     if (ui.exercise && !chipList.includes(ui.exercise)) chipList.unshift(ui.exercise);
     const countFor = (ex) => day.filter((s) => s.exercise === ex).length;
-    $("#chips").innerHTML = chipList.map((ex) => {
-      const c = countFor(ex);
-      return `<button type="button" role="listitem" class="chip${ex === ui.exercise ? " is-on" : ""}" data-ex="${esc(ex)}" aria-pressed="${ex === ui.exercise}">${esc(ex)}${c ? `<span class="count">${c}</span>` : ""}</button>`;
-    }).join("") + `<button type="button" class="chip is-add" id="addExChip"><svg class="ic"><use href="#i-plus"/></svg>Ejercicio</button>`;
+    $("#chips").innerHTML = `<button type="button" class="chip is-add" id="addExChip"><svg class="ic"><use href="#i-plus"/></svg>Agregar ejercicio</button>` +
+      chipList.map((ex) => {
+        const c = countFor(ex);
+        return `<button type="button" role="listitem" class="chip${ex === ui.exercise ? " is-on" : ""}" data-ex="${esc(ex)}" aria-pressed="${ex === ui.exercise}">${esc(ex)}${c ? `<span class="count">${c}</span>` : ""}</button>`;
+      }).join("");
 
     const name = $("#exName");
     name.textContent = ui.exercise || "Elige un ejercicio";
@@ -210,7 +260,8 @@
         const ls = prev.filter((s) => s.date === lastDate).sort(sortSets);
         last.innerHTML = `Última vez, ${esc(dayShort(lastDate))}: <b>${ls.map((s) => `${fmt(s.weight)}×${s.reps}`).join(", ")}</b>`;
       } else last.textContent = "Primera vez con este ejercicio";
-    } else last.textContent = "";
+    } else last.textContent = "Toca un ejercicio de arriba o agrega uno nuevo.";
+    $("#board").classList.toggle("is-idle", !ui.exercise);
 
     // series de hoy del ejercicio actual
     const mine = day.filter((s) => s.exercise === ui.exercise);
@@ -235,7 +286,41 @@
     btn.textContent = ui.exercise ? `Anotar serie ${mine.length + 1}` : "Elige un ejercicio";
   }
 
+  /* ---------- Rutina del día ---------- */
+  const typeSheet = $("#typeSheet");
+  function setDayType(type) {
+    const t = type ? cap(type.trim().replace(/\s+/g, " ")).slice(0, 40) : "";
+    if (t) {
+      data.days[ui.date] = { type: t };
+      if (!DEFAULT_DAY_TYPES.includes(t) && !data.dayTypes.includes(t)) data.dayTypes.push(t);
+    } else delete data.days[ui.date];
+    save();
+    ui.exercise = setsOn(ui.date).length ? ui.exercise : null;
+    if (typeSheet.open) typeSheet.close();
+    render();
+  }
+  function openTypeSheet(focusNew = false) {
+    const cur = dayType(ui.date);
+    $("#typeGrid").innerHTML = allDayTypes().map((t) => `<button type="button" class="type-opt${t === cur ? " is-on" : ""}" data-type="${esc(t)}">${esc(t)}</button>`).join("");
+    $("#typeNew").value = "";
+    $("#typeClear").hidden = !cur;
+    typeSheet.showModal();
+    if (focusNew) setTimeout(() => $("#typeNew").focus(), 50);
+  }
+  $("#typeBtn").addEventListener("click", () => openTypeSheet());
+  $("#typeGrid").addEventListener("click", (e) => { const b = e.target.closest("[data-type]"); if (b) setDayType(b.dataset.type); });
+  $("#typeNewForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const v = $("#typeNew").value.trim();
+    if (!v) { $("#typeNew").focus(); return; }
+    setDayType(v);
+  });
+  $("#typeClear").addEventListener("click", () => setDayType(""));
+
   $("#view-hoy").addEventListener("click", (e) => {
+    const typeChip = e.target.closest("[data-type]");
+    if (typeChip) return setDayType(typeChip.dataset.type);
+    if (e.target.closest("[data-type-other]")) return openTypeSheet(true);
     const chip = e.target.closest("[data-ex]");
     if (chip) return selectExercise(chip.dataset.ex);
     if (e.target.closest("#addExChip")) return openExerciseSheet();
@@ -351,7 +436,8 @@
     const sets = setsOn(date);
     const exs = [...new Set(sets.map((s) => s.exercise))];
     const dates = sessionDates();
-    const sub = [withSession ? `Sesión ${dates.indexOf(date) + 1}` : "", `${sets.length} ${sets.length === 1 ? "serie" : "series"}`].filter(Boolean).join(", ");
+    const type = dayType(date);
+    const sub = (type ? `<b>${esc(type)}</b>, ` : "") + [withSession ? `sesión ${dates.indexOf(date) + 1}` : "", `${sets.length} ${sets.length === 1 ? "serie" : "series"}`].filter(Boolean).join(", ");
     return `<article class="day">
       <div class="day-head">
         <h2 class="day-date">${esc(dayLong(date))}<small>${fromISO(date).getFullYear() !== new Date().getFullYear() ? fromISO(date).getFullYear() + ", " : ""}${sub}</small></h2>
@@ -536,7 +622,7 @@
   /* ---------- Respaldo ---------- */
   const backupSheet = $("#backupSheet"), importSheet = $("#importSheet");
   $$("[data-close]").forEach((b) => b.addEventListener("click", () => b.closest("dialog").close()));
-  for (const d of [exSheet, backupSheet, importSheet]) d.addEventListener("click", (e) => { if (e.target === d) d.close(); });
+  for (const d of [exSheet, backupSheet, importSheet, typeSheet]) d.addEventListener("click", (e) => { if (e.target === d) d.close(); });
 
   $("#backupBtn").addEventListener("click", () => {
     const n = data.sets.length, s = sessionDates().length;
@@ -545,7 +631,7 @@
     backupSheet.showModal();
   });
   $("#exportBtn").addEventListener("click", () => {
-    const payload = { app: "GymTracker", version: 1, exportedAt: new Date().toISOString(), sets: [...data.sets].sort(sortSets), exercises: data.exercises };
+    const payload = { app: "GymTracker", version: 1, exportedAt: new Date().toISOString(), sets: [...data.sets].sort(sortSets), exercises: data.exercises, days: data.days, dayTypes: data.dayTypes };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -575,7 +661,8 @@
         weight: Number(s.weight), reps: Number(s.reps), ts: Number(s.ts) || i,
       }));
       if (!good.length) throw new Error("vacío");
-      pending = { sets: good, exercises: Array.isArray(json.exercises) ? json.exercises.filter((x) => typeof x === "string") : [] };
+      const extra = normalize(Array.isArray(json) ? {} : json);
+      pending = { sets: good, exercises: extra.exercises, days: extra.days, dayTypes: extra.dayTypes };
       const dates = good.map((s) => s.date).sort();
       const skipped = sets.length - good.length;
       $("#importInfo").innerHTML = `El archivo tiene <b>${good.length}</b> series del ${esc(dayFull(dates[0]))} al ${esc(dayFull(dates[dates.length - 1]))}.${skipped ? ` Se omitirán ${skipped} filas con datos incompletos.` : ""} Tienes <b>${data.sets.length}</b> series ahora en este teléfono.`;
@@ -595,11 +682,13 @@
       data.sets.push(s); added++;
     }
     data.exercises = [...new Set([...data.exercises, ...pending.exercises])];
+    data.dayTypes = [...new Set([...data.dayTypes, ...pending.dayTypes])];
+    data.days = { ...pending.days, ...data.days }; // la rutina ya anotada en el teléfono manda
     finishImport(`Importadas ${added} series nuevas`);
   });
   $("#importReplace").addEventListener("click", () => {
     if (!pending) return;
-    data = { version: 1, sets: pending.sets, exercises: pending.exercises };
+    data = normalize({ sets: pending.sets, exercises: pending.exercises, days: pending.days, dayTypes: pending.dayTypes });
     finishImport(`Datos reemplazados: ${pending.sets.length} series`);
   });
   function finishImport(msg) {
