@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>GymTracker</title>
+  <meta name="description" content="Registro personal de entrenamientos: series, historial, calendario y progreso. Funciona sin internet.">
+  <meta name="theme-color" content="#0E1116">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="preload" href="fonts/oswald-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-today" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r=".6"/><circle cx="4" cy="12" r=".6"/><circle cx="4" cy="18" r=".6"/></symbol>
+      <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></symbol>
+      <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 4v16h16"/><path d="M7 15l4-4 3 3 5-6"/></symbol>
+      <symbol id="i-backup" viewBox="0 0 24 24"><path d="M12 3v11M7.5 9.5 12 14l4.5-4.5"/><path d="M4 15v4.5h16V15"/></symbol>
+      <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-left" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+      <symbol id="i-right" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></symbol>
+      <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 7V4.5h4V7M6.5 7l1 13h9l1-13"/></symbol>
+      <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5"/><path d="M4 15v4.5h16V15"/></symbol>
+      <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></symbol>
+    </defs>
+  </svg>
+
+  <div class="app">
+    <header class="topbar">
+      <button class="date-btn" id="dateBtn" type="button" aria-label="Cambiar fecha">
+        <span class="date-main" id="dateMain">Hoy</span>
+        <span class="date-sub" id="dateSub"></span>
+        <input type="date" id="dateInput" class="date-input" tabindex="-1" aria-hidden="true">
+      </button>
+      <div class="topbar-right">
+        <span class="session" id="sessionTag"></span>
+        <button class="icon-btn" id="backupBtn" type="button" aria-label="Respaldo de datos">
+          <svg class="ic"><use href="#i-backup"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <main class="views">
+      <!-- HOY -->
+      <section class="view" id="view-hoy" aria-label="Registrar">
+        <div class="chips" id="chips" role="list"></div>
+
+        <div class="board" id="board">
+          <div class="board-head">
+            <h1 class="ex-name" id="exName">Elige un ejercicio</h1>
+            <div class="lights" id="lights" aria-hidden="true"><i></i><i></i><i></i></div>
+          </div>
+          <p class="last" id="lastTime"></p>
+
+          <div class="dial" aria-label="Peso">
+            <button class="step" type="button" data-step="weight" data-dir="-1" aria-label="Bajar peso"><svg class="ic"><use href="#i-minus"/></svg></button>
+            <label class="readout">
+              <input class="num big" id="weightInput" inputmode="decimal" autocomplete="off" aria-label="Peso en kilos" value="20">
+              <span class="unit">kg</span>
+            </label>
+            <button class="step" type="button" data-step="weight" data-dir="1" aria-label="Subir peso"><svg class="ic"><use href="#i-plus"/></svg></button>
+          </div>
+          <div class="incs" role="group" aria-label="Incremento de peso">
+            <button type="button" class="inc" data-inc="1">1</button>
+            <button type="button" class="inc is-on" data-inc="2.5">2,5</button>
+            <button type="button" class="inc" data-inc="5">5</button>
+          </div>
+
+          <div class="dial dial-reps" aria-label="Repeticiones">
+            <button class="step" type="button" data-step="reps" data-dir="-1" aria-label="Bajar repeticiones"><svg class="ic"><use href="#i-minus"/></svg></button>
+            <label class="readout">
+              <input class="num mid" id="repsInput" inputmode="numeric" autocomplete="off" aria-label="Repeticiones" value="10">
+              <span class="unit">reps</span>
+            </label>
+            <button class="step" type="button" data-step="reps" data-dir="1" aria-label="Subir repeticiones"><svg class="ic"><use href="#i-plus"/></svg></button>
+          </div>
+        </div>
+
+        <div class="today" id="todaySets"></div>
+        <div class="today-others" id="todayOthers"></div>
+        <div class="spacer-cta"></div>
+      </section>
+
+      <!-- HISTORIAL -->
+      <section class="view" id="view-historial" aria-label="Historial" hidden>
+        <h1 class="view-title">Historial</h1>
+        <div id="historyList"></div>
+      </section>
+
+      <!-- CALENDARIO -->
+      <section class="view" id="view-calendario" aria-label="Calendario" hidden>
+        <div class="cal-head">
+          <button class="icon-btn" id="calPrev" type="button" aria-label="Mes anterior"><svg class="ic"><use href="#i-left"/></svg></button>
+          <h1 class="view-title cal-title" id="calTitle"></h1>
+          <button class="icon-btn" id="calNext" type="button" aria-label="Mes siguiente"><svg class="ic"><use href="#i-right"/></svg></button>
+        </div>
+        <p class="cal-stats" id="calStats"></p>
+        <div class="cal-grid" id="calGrid" role="grid"></div>
+        <p class="cal-legend"><span class="dot on"></span> Entrenaste <span class="dot pr"></span> Récord</p>
+        <div id="calDay"></div>
+      </section>
+
+      <!-- PROGRESO -->
+      <section class="view" id="view-progreso" aria-label="Progreso" hidden>
+        <h1 class="view-title">Progreso</h1>
+        <label class="select-wrap">
+          <span class="sr">Ejercicio</span>
+          <select id="progEx"></select>
+        </label>
+        <div class="ranges" role="group" aria-label="Rango de tiempo" id="ranges">
+          <button type="button" data-range="90">3 meses</button>
+          <button type="button" data-range="180">6 meses</button>
+          <button type="button" data-range="365">1 año</button>
+          <button type="button" data-range="0" class="is-on">Todo</button>
+        </div>
+        <div id="progBody"></div>
+      </section>
+    </main>
+
+    <div class="cta-wrap" id="ctaWrap">
+      <button class="cta" id="logBtn" type="button">Anotar serie</button>
+    </div>
+
+    <nav class="tabbar" aria-label="Secciones">
+      <button type="button" class="tab is-on" data-view="hoy" aria-current="page"><svg class="ic"><use href="#i-today"/></svg><span>Hoy</span></button>
+      <button type="button" class="tab" data-view="historial"><svg class="ic"><use href="#i-list"/></svg><span>Historial</span></button>
+      <button type="button" class="tab" data-view="calendario"><svg class="ic"><use href="#i-cal"/></svg><span>Calendario</span></button>
+      <button type="button" class="tab" data-view="progreso"><svg class="ic"><use href="#i-chart"/></svg><span>Progreso</span></button>
+    </nav>
+  </div>
+
+  <!-- Hoja: nuevo ejercicio -->
+  <dialog class="sheet" id="exSheet" aria-labelledby="exSheetTitle">
+    <form method="dialog" class="sheet-inner" id="exForm">
+      <div class="sheet-head">
+        <h2 id="exSheetTitle">Ejercicio</h2>
+        <button class="icon-btn" value="cancel" formnovalidate aria-label="Cerrar"><svg class="ic"><use href="#i-close"/></svg></button>
+      </div>
+      <input class="field" id="exSearch" placeholder="Buscar o escribir uno nuevo" autocomplete="off" enterkeyhint="done">
+      <div class="ex-list" id="exList"></div>
+    </form>
+  </dialog>
+
+  <!-- Hoja: respaldo -->
+  <dialog class="sheet" id="backupSheet" aria-labelledby="backupTitle">
+    <div class="sheet-inner">
+      <div class="sheet-head">
+        <h2 id="backupTitle">Respaldo</h2>
+        <button class="icon-btn" type="button" data-close aria-label="Cerrar"><svg class="ic"><use href="#i-close"/></svg></button>
+      </div>
+      <p class="sheet-text" id="backupInfo"></p>
+      <button class="btn btn-primary" type="button" id="exportBtn"><svg class="ic"><use href="#i-backup"/></svg>Exportar datos</button>
+      <button class="btn" type="button" id="importBtn"><svg class="ic"><use href="#i-upload"/></svg>Importar respaldo</button>
+      <input type="file" id="importFile" accept="application/json,.json" hidden>
+      <p class="sheet-note">Tus datos se guardan solo en este teléfono. Exporta un respaldo de vez en cuando y guárdalo en Drive o envíatelo.</p>
+    </div>
+  </dialog>
+
+  <!-- Hoja: importar -->
+  <dialog class="sheet" id="importSheet" aria-labelledby="importTitle">
+    <div class="sheet-inner">
+      <div class="sheet-head">
+        <h2 id="importTitle">Importar respaldo</h2>
+        <button class="icon-btn" type="button" data-close aria-label="Cerrar"><svg class="ic"><use href="#i-close"/></svg></button>
+      </div>
+      <p class="sheet-text" id="importInfo"></p>
+      <button class="btn btn-primary" type="button" id="importMerge">Combinar con mis datos</button>
+      <button class="btn btn-danger" type="button" id="importReplace">Reemplazar todo</button>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden>
+    <span id="toastText"></span>
+    <button type="button" id="toastAction"></button>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

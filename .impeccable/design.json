@@ -1,0 +1,24 @@
+{
+  "name": "GymTracker",
+  "world": "Tablero de competencia",
+  "color": {
+    "board": "#0E1116",
+    "panel": "#171B22",
+    "panel-2": "#20252E",
+    "line": "#2C323C",
+    "ink": "#FFFFFF",
+    "ink-2": "#B7BEC9",
+    "ink-3": "#8790A0",
+    "yellow": "#F2C230",
+    "yellow-ink": "#17140A",
+    "red": "#F2584B",
+    "light-off": "#2A2F38"
+  },
+  "font": {
+    "board": "Oswald, 'Roboto Condensed', 'Arial Narrow', sans-serif",
+    "ui": "system-ui, -apple-system, Roboto, 'Segoe UI', sans-serif"
+  },
+  "radius": { "s": "10px", "m": "14px", "step": "16px", "board": "20px", "sheet": "22px", "pill": "999px" },
+  "size": { "tab-h": "68px", "cta-h": "64px", "step": "64px", "chip-h": "48px" },
+  "motion": { "ease": "cubic-bezier(.16,1,.3,1)", "lights": "320ms, stagger 110ms" }
+}
