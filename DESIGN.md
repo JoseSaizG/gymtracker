@@ -26,15 +26,28 @@ Color strategy: restrained board with one committed signal color. Yellow means "
 - **System UI** (Roboto on Android): body, labels, buttons in sheets, 14–17px.
 - Hierarchy is scale contrast: huge figures, small sentence-case labels. No all-caps labels.
 
+## Spacing, shape, depth
+
+- Spacing scale `--s1…--s6`: 4, 8, 12, 16, 24, 32px. More space above a heading than below it.
+- Radii `--r-xs 8` (tokens), `--r-s 12` (icon buttons), `--r-m 16` (steps, CTA, buttons, fields), `--r-l 22` (board, sheets), pill for chips and segmented controls.
+- Depth is a 1px hairline `--line` plus a faint top edge highlight `--edge` (`inset 0 1px 0 rgba(255,255,255,.045)`); only the CTA and toast cast a shadow.
+- Segmented controls (Salto, rango de Progreso): a pill track on `--board`, the active segment raised to `--panel-3`.
+
 ## Components
 
 - **Referee lights**: three 20px circles. Off `--light-off` inset; on white with soft white light; record = yellow. Light up staggered 0/110/220ms, 320ms ease-out; turn off after 1.5s (2.6s for a record). This is the only glow in the system: it depicts real lamps.
 - **Dial**: 64×64 step buttons (radius 16) flanking an editable number; unit centred under the figure. Weight increments 1 / 2,5 / 5 kg, persisted per device.
-- **Rutina del día**: while a day has no routine and no sets, Hoy asks "¿Qué rutina toca hoy?" with Oswald chips (Push, Pull, Pierna, Upper, Lower, Full body, + Otra). Once chosen it becomes a yellow-outline pill in the top bar that reopens the routine sheet. Exercises done on earlier days of the same routine are offered first.
+- **Top bar**: on Hoy, date + routine pill + settings (sliders icon → Ajustes: saltos de peso, respaldo). On other tabs the view title lives in the bar. A hairline appears only once content scrolls under it.
+- **Rutina del día**: while a day has no routine and no sets, Hoy asks "¿Qué rutina toca hoy?" as a 3-column grid of 56px tiles (Push, Pull, Pierna, Upper, Lower, Full body, + Otra) and hides the empty board. Once chosen it becomes a yellow pill in the top bar; with sets but no routine the pill reads "Elegir rutina" (dashed). The idle board then lists the exercises of the last session of that routine as one-tap rows.
+- **Última vez**: the previous session's sets as small tappable tokens that load weight × reps; the token matching the next set number is outlined. Prefill starts from set 1 of last time, then repeats today's last set.
+- **Set rows**: numbered 28px disc, value in Oswald, a new row flashes once; trash is quiet (undo exists).
+- **Peso corporal**: 0 kg displays as "PC" everywhere it is listed; the dial's unit reads "kg, peso corporal".
+- **−/+**: tap steps once; press-and-hold repeats, accelerating from 420ms to 60ms.
 - **Chips**: 48px pills, "Agregar ejercicio" (dashed yellow) always first, recent exercises first, count of today's sets in yellow figures. Active = white fill.
 - **CTA**: full-width 64px yellow bar, radius 16, fixed above the tab bar, label states the set number ("Anotar serie 3").
 - **Tab bar**: 4 tabs (Hoy, Historial, Calendario, Progreso), 68px + safe area, active icon yellow.
-- **Calendar**: Monday-first 7-col grid of circles; trained = white disc, record day = yellow disc, today = outline ring, selected = yellow ring.
+- **Calendar**: three stat tiles (sesiones este mes, semanas seguidas, total), then a Monday-first grid; trained = white disc, record = 6px yellow dot under the day, today = inner ring, selected = yellow outer ring. The last trained day of the month is selected by default so its summary shows below.
+- **History**: sticky month separators with session counts; each day shows its routine as a yellow tag, and sets as small tokens (records tinted yellow).
 - **Progress chart**: single white 2px line, 4px points, yellow 5.5px points for records, dashed crosshair + tooltip on tap; a sessions table below is the accessible view.
 - **Sheets**: bottom `<dialog>` sheets, radius 22 top corners, backdrop `rgba(5,7,10,.7)`.
 - **Toast**: white (yellow for a record) bar above the CTA with an "Deshacer" action, 5s.

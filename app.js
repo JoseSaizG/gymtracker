@@ -21,6 +21,8 @@
   const todayISO = () => toISO(new Date());
   const numFmt = new Intl.NumberFormat("es-CL", { maximumFractionDigits: 2 });
   const fmt = (n) => numFmt.format(n);
+  /** Peso para mostrar: 0 kg es peso corporal (dominadas, fondos…). */
+  const wf = (w) => (w === 0 ? "PC" : fmt(w));
   const parseNum = (s) => parseFloat(String(s).replace(",", ".").replace(/[^\d.]/g, ""));
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -137,12 +139,17 @@
     for (const v of $$(".view")) v.hidden = v.id !== "view-" + view;
     $("#ctaWrap").hidden = view !== "hoy";
     $("#dateBtn").hidden = view !== "hoy";
-    $("#sessionTag").hidden = view !== "hoy";
     if (view !== "hoy") $("#typeBtn").hidden = true;
+    const titles = { historial: "Historial", calendario: "Calendario", progreso: "Progreso" };
+    $("#topTitle").hidden = view === "hoy";
+    $("#topTitle").textContent = titles[view] || "";
     render();
     window.scrollTo(0, 0);
   }
   $$(".tab").forEach((t) => t.addEventListener("click", () => show(t.dataset.view)));
+  // la cabecera marca su borde solo cuando hay contenido pasando por debajo
+  const onScroll = () => $(".topbar").classList.toggle("is-scrolled", window.scrollY > 4);
+  window.addEventListener("scroll", onScroll, { passive: true });
 
   function render() {
     renderHeader();
@@ -162,11 +169,6 @@
     $("#dateBtn").classList.toggle("is-past", diff !== 0);
     $("#dateInput").value = ui.date;
     $("#dateInput").max = t;
-
-    const dates = sessionDates();
-    const idx = dates.indexOf(ui.date);
-    const n = idx >= 0 ? idx + 1 : dates.filter((d) => d < ui.date).length + 1;
-    $("#sessionTag").innerHTML = `Sesión <b>${n}</b>`;
 
     const type = dayType(ui.date);
     const tb = $("#typeBtn");
@@ -190,18 +192,24 @@
   const weightInput = $("#weightInput");
   const repsInput = $("#repsInput");
 
+  /** Series de la sesión anterior de un ejercicio (antes de la fecha elegida). */
+  function lastSession(ex) {
+    const prev = data.sets.filter((s) => s.exercise === ex && s.date < ui.date);
+    const lastDate = prev.reduce((m, s) => (s.date > m ? s.date : m), "");
+    return { date: lastDate, sets: prev.filter((s) => s.date === lastDate).sort(sortSets) };
+  }
+  /** Sin series hoy: arranca con la serie 1 de la vez anterior. Con series: repite la última. */
   function prefill(ex) {
     const today = setsOn(ui.date).filter((s) => s.exercise === ex);
-    let src = today[today.length - 1];
-    if (!src) {
-      const prev = data.sets.filter((s) => s.exercise === ex && s.date < ui.date).sort(sortSets);
-      src = prev[prev.length - 1];
-    }
+    const src = today[today.length - 1] || lastSession(ex).sets[0];
     setWeight(src ? src.weight : 20);
     setReps(src ? src.reps : 10);
   }
   function setWeight(v) { weightInput.value = fmt(Math.max(0, Math.round(v * 100) / 100)); fitWeight(); }
-  function fitWeight() { weightInput.dataset.len = Math.min(6, Math.max(3, weightInput.value.length)); }
+  function fitWeight() {
+    weightInput.dataset.len = Math.min(6, Math.max(3, weightInput.value.length));
+    $("#weightUnit").textContent = parseNum(weightInput.value) === 0 ? "kg, peso corporal" : "kg";
+  }
   weightInput.addEventListener("input", fitWeight);
   function setReps(v) { repsInput.value = String(Math.max(1, Math.round(v))); }
   const getWeight = () => parseNum(weightInput.value);
@@ -234,14 +242,14 @@
     $("#typePicker").hidden = !ask;
     if (ask) {
       $("#typeQ").textContent = ui.date === todayISO() ? "¿Qué rutina toca hoy?" : "¿Qué rutina hiciste ese día?";
-      $("#typeChips").innerHTML = allDayTypes().map((t) => `<button type="button" class="chip" data-type="${esc(t)}">${esc(t)}</button>`).join("") +
-        `<button type="button" class="chip is-add" data-type-other><svg class="ic"><use href="#i-plus"/></svg>Otra</button>`;
+      $("#typeChips").innerHTML = allDayTypes().map((t) => `<button type="button" class="type-opt" data-type="${esc(t)}">${esc(t)}</button>`).join("") +
+        `<button type="button" class="type-opt is-other" data-type-other><svg class="ic"><use href="#i-plus"/></svg>Otra</button>`;
     }
 
     if (!ui.exercise) {
+      // solo se retoma un ejercicio ya empezado; el primero lo elige el usuario
       const lastToday = day[day.length - 1];
-      // con rutina elegida y sin series, el usuario elige el primer ejercicio
-      ui.exercise = lastToday ? lastToday.exercise : type ? null : used[0] || null;
+      ui.exercise = lastToday ? lastToday.exercise : null;
       if (ui.exercise) prefill(ui.exercise);
     }
     const { prIds } = computeRecords();
@@ -261,34 +269,41 @@
     name.textContent = ui.exercise || "Elige un ejercicio";
     name.classList.toggle("is-empty", !ui.exercise);
 
-    // última vez
-    const last = $("#lastTime");
-    if (ui.exercise) {
-      const prev = data.sets.filter((s) => s.exercise === ui.exercise && s.date < ui.date);
-      const lastDate = prev.reduce((m, s) => (s.date > m ? s.date : m), "");
-      if (lastDate) {
-        const ls = prev.filter((s) => s.date === lastDate).sort(sortSets);
-        last.innerHTML = `Última vez, ${esc(dayShort(lastDate))}: <b>${ls.map((s) => `${fmt(s.weight)}×${s.reps}`).join(", ")}</b>`;
-      } else last.textContent = "Primera vez con este ejercicio";
-    } else last.textContent = "Toca un ejercicio de arriba o agrega uno nuevo.";
-    $("#board").classList.toggle("is-idle", !ui.exercise);
-
     // series de hoy del ejercicio actual
     const mine = day.filter((s) => s.exercise === ui.exercise);
+
+    // última vez: cada serie se puede tocar para cargarla; se marca la que toca ahora
+    const last = $("#lastTime");
+    if (ui.exercise) {
+      const ls = lastSession(ui.exercise);
+      if (ls.date) {
+        last.innerHTML = `<span class="last-label">Última vez, ${esc(dayShort(ls.date))}</span><span class="prev-sets">${ls.sets.map((s, i) =>
+          `<button type="button" class="prev${i === mine.length ? " is-next" : ""}" data-pw="${s.weight}" data-pr="${s.reps}" aria-label="Usar ${fmt(s.weight)} kilos por ${s.reps}">${wf(s.weight)}<span class="x">×</span>${s.reps}</button>`).join("")}</span>`;
+      } else last.innerHTML = `<span class="last-label">Primera vez con este ejercicio</span>`;
+    } else last.innerHTML = `<span class="last-label">${typeEx.length ? `Empieza con uno de tu último ${esc(type)}, o elige otro arriba.` : "Toca un ejercicio de arriba o agrega uno nuevo."}</span>`;
+    // atajo: con rutina elegida y sin ejercicio, los de la última vez a un toque
+    $("#quickEx").innerHTML = !ui.exercise && typeEx.length
+      ? typeEx.slice(0, 6).map((ex) => `<button type="button" class="quick-ex" data-ex="${esc(ex)}"><span>${esc(ex)}</span><svg class="ic"><use href="#i-chev"/></svg></button>`).join("")
+      : "";
+    $("#board").classList.toggle("is-idle", !ui.exercise);
+    // mientras se elige la rutina, el tablero vacío solo hace ruido
+    $("#board").hidden = ask && !ui.exercise;
+
     $("#todaySets").innerHTML = !ui.exercise ? "" : mine.length
       ? mine.map((s, i) => `
-        <div class="set-row">
-          <span class="set-n">Serie ${i + 1}</span>
-          <button type="button" class="set-v" data-load="${s.id}" aria-label="Usar ${fmt(s.weight)} kilos por ${s.reps}">${fmt(s.weight)}<span class="kg">kg</span><span class="x">×</span>${s.reps}${prIds.has(s.id) ? '<span class="badge">Récord</span>' : ""}</button>
+        <div class="set-row${s.id === ui.justLogged ? " is-new" : ""}">
+          <span class="set-n" aria-label="Serie ${i + 1}">${i + 1}</span>
+          <button type="button" class="set-v" data-load="${s.id}" aria-label="Usar ${fmt(s.weight)} kilos por ${s.reps}">${wf(s.weight)}${s.weight ? '<span class="kg">kg</span>' : ""}<span class="x">×</span>${s.reps}${prIds.has(s.id) ? '<span class="badge">Récord</span>' : ""}</button>
           <button type="button" class="icon-btn del" data-del="${s.id}" aria-label="Borrar serie ${i + 1}"><svg class="ic"><use href="#i-trash"/></svg></button>
         </div>`).join("")
-      : `<p class="today-empty">Aún no anotas series de ${esc(ui.exercise)} ${ui.date === todayISO() ? "hoy" : "este día"}.</p>`;
+      : `<p class="today-empty">Ajusta el peso y las reps y toca Anotar serie.</p>`;
+    ui.justLogged = null;
 
     // otros ejercicios del día
     const others = [...new Set(day.map((s) => s.exercise))].filter((e) => e !== ui.exercise);
     $("#todayOthers").innerHTML = others.length ? `<h2 class="others-title">También ${ui.date === todayISO() ? "hoy" : "este día"}</h2>` + others.map((ex) => {
       const ss = day.filter((s) => s.exercise === ex);
-      return `<button type="button" class="other-row" data-ex="${esc(ex)}"><span>${esc(ex)}</span><span>${ss.map((s) => `${fmt(s.weight)}×${s.reps}`).join("  ")}</span></button>`;
+      return `<button type="button" class="other-row" data-ex="${esc(ex)}"><span>${esc(ex)}</span><span>${ss.map((s) => `${wf(s.weight)}×${s.reps}`).join("  ")}</span></button>`;
     }).join("") : "";
 
     const btn = $("#logBtn");
@@ -334,6 +349,8 @@
     const chip = e.target.closest("[data-ex]");
     if (chip) return selectExercise(chip.dataset.ex);
     if (e.target.closest("#addExChip")) return openExerciseSheet();
+    const prev = e.target.closest("[data-pw]");
+    if (prev) { setWeight(Number(prev.dataset.pw)); setReps(Number(prev.dataset.pr)); return; }
     const load = e.target.closest("[data-load]");
     if (load) {
       const s = data.sets.find((x) => x.id === load.dataset.load);
@@ -344,11 +361,8 @@
     if (del) return deleteSet(del.dataset.del);
     const step = e.target.closest("[data-step]");
     if (step) {
-      const dir = Number(step.dataset.dir);
-      if (step.dataset.step === "weight") {
-        const w = getWeight() || 0;
-        setWeight(w + dir * ui.inc);
-      } else setReps((getReps() || 0) + dir);
+      // el toque ya se aplicó en pointerdown; esto cubre teclado y lectores de pantalla
+      if (e.detail === 0) doStep(step);
       return;
     }
     const inc = e.target.closest("[data-inc]");
@@ -358,10 +372,32 @@
       renderIncs();
     }
   });
+  /* −/+ : un toque cambia una vez; mantener presionado repite, cada vez más rápido */
+  function doStep(btn) {
+    const dir = Number(btn.dataset.dir);
+    if (btn.dataset.step === "weight") setWeight((getWeight() || 0) + dir * ui.inc);
+    else setReps((getReps() || 0) + dir);
+  }
+  let holdTimer = null;
+  function stopHold() { clearTimeout(holdTimer); holdTimer = null; }
+  $("#board").addEventListener("pointerdown", (e) => {
+    const btn = e.target.closest("[data-step]");
+    if (!btn || e.button > 0) return;
+    stopHold();
+    doStep(btn);
+    let delay = 420;
+    const tick = () => { doStep(btn); delay = Math.max(60, delay * 0.8); holdTimer = setTimeout(tick, delay); };
+    holdTimer = setTimeout(tick, delay);
+  });
+  for (const ev of ["pointerup", "pointercancel", "pointerleave"]) $("#board").addEventListener(ev, stopHold);
+  window.addEventListener("blur", stopHold);
+  $("#board").addEventListener("contextmenu", (e) => { if (e.target.closest("[data-step]")) e.preventDefault(); });
+
   function renderIncs() {
     const incs = data.settings.incs;
     if (!incs.includes(ui.inc)) ui.inc = incs.includes(2.5) ? 2.5 : incs[Math.floor((incs.length - 1) / 2)];
     $("#incOpts").innerHTML = incs.map((n) => `<button type="button" class="inc${n === ui.inc ? " is-on" : ""}" data-inc="${n}" aria-pressed="${n === ui.inc}">${fmt(n)}</button>`).join("");
+    $("#incSummary").textContent = incs.map(fmt).join(", ") + " kg";
   }
   renderIncs();
 
@@ -371,7 +407,9 @@
     for (let i = 0; i < 3; i++) f.elements["i" + i].value = list[i] != null ? fmt(list[i]) : "";
     $("#incError").hidden = true;
   }
-  $("#incEdit").addEventListener("click", () => { fillIncForm(data.settings.incs); incSheet.showModal(); });
+  function openIncSheet() { fillIncForm(data.settings.incs); if ($("#backupSheet").open) $("#backupSheet").close(); incSheet.showModal(); }
+  $("#incEdit").addEventListener("click", openIncSheet);
+  $("#incRow").addEventListener("click", openIncSheet);
   $("#incReset").addEventListener("click", () => fillIncForm(DEFAULT_INCS));
   $("#incForm").addEventListener("submit", (e) => {
     e.preventDefault();
@@ -414,6 +452,7 @@
     const record = prIds.has(set.id);
     flashLights(record);
     if (navigator.vibrate) navigator.vibrate(record ? [30, 60, 30] : 25);
+    ui.justLogged = set.id;
     renderHeader();
     renderHoy();
     const n = data.sets.filter((s) => s.date === set.date && s.exercise === set.exercise).length;
@@ -478,13 +517,16 @@
     const exs = [...new Set(sets.map((s) => s.exercise))];
     const dates = sessionDates();
     const type = dayType(date);
-    const sub = (type ? `<b>${esc(type)}</b>, ` : "") + [withSession ? `sesión ${dates.indexOf(date) + 1}` : "", `${sets.length} ${sets.length === 1 ? "serie" : "series"}`].filter(Boolean).join(", ");
+    const meta = [withSession ? `Sesión ${dates.indexOf(date) + 1}` : "", `${sets.length} ${sets.length === 1 ? "serie" : "series"}`].filter(Boolean).join(", ");
     return `<article class="day">
       <div class="day-head">
-        <h2 class="day-date">${esc(dayLong(date))}<small>${fromISO(date).getFullYear() !== new Date().getFullYear() ? fromISO(date).getFullYear() + ", " : ""}${sub}</small></h2>
-        <button type="button" class="day-edit" data-open-day="${date}"><svg class="ic"><use href="#i-edit"/></svg>Editar</button>
+        <div class="day-title">
+          <h2 class="day-date">${esc(dayLong(date))}${fromISO(date).getFullYear() !== new Date().getFullYear() ? " " + fromISO(date).getFullYear() : ""}</h2>
+          <p class="day-meta">${type ? `<span class="day-type">${esc(type)}</span>` : ""}${meta}</p>
+        </div>
+        <button type="button" class="day-edit" data-open-day="${date}" aria-label="Editar ${esc(dayLong(date))}"><svg class="ic"><use href="#i-edit"/></svg>Editar</button>
       </div>
-      ${exs.map((ex) => `<div class="ex-line"><span class="ex-line-name">${esc(ex)}</span><span class="ex-line-sets">${sets.filter((s) => s.exercise === ex).map((s) => `<span class="${prIds.has(s.id) ? "is-pr" : ""}">${fmt(s.weight)}×${s.reps}${prIds.has(s.id) ? " récord" : ""}</span>`).join("")}</span></div>`).join("")}
+      <ul class="ex-lines">${exs.map((ex) => `<li class="ex-line"><span class="ex-line-name">${esc(ex)}</span><span class="ex-line-sets">${sets.filter((s) => s.exercise === ex).map((s) => `<span class="tok${prIds.has(s.id) ? " is-pr" : ""}"${prIds.has(s.id) ? ' title="Récord"' : ""}>${wf(s.weight)}<span class="x">×</span>${s.reps}</span>`).join("")}</span></li>`).join("")}</ul>
     </article>`;
   }
   document.addEventListener("click", (e) => {
@@ -504,7 +546,18 @@
     const dates = sessionDates().reverse();
     if (!dates.length) { $("#historyList").innerHTML = emptyState("Todavía no hay entrenamientos. Anota tu primera serie y aparecerá aquí.", "Registrar entrenamiento"); return; }
     const { prIds } = computeRecords();
-    $("#historyList").innerHTML = dates.map((d) => dayBlock(d, prIds)).join("");
+    let month = "", html = "";
+    for (const d of dates) {
+      const m = d.slice(0, 7);
+      if (m !== month) {
+        month = m;
+        const dt = fromISO(d);
+        const n = dates.filter((x) => x.startsWith(m)).length;
+        html += `<h2 class="month-sep"><span>${cap(dt.toLocaleDateString("es-CL", { month: "long" }))} ${dt.getFullYear()}</span><small>${n} ${n === 1 ? "sesión" : "sesiones"}</small></h2>`;
+      }
+      html += dayBlock(d, prIds);
+    }
+    $("#historyList").innerHTML = html;
   }
 
   /* ---------- CALENDARIO ---------- */
@@ -516,12 +569,21 @@
     const { prIds, prDates } = computeRecords();
     const monthPrefix = `${y}-${pad(mo + 1)}`;
     const inMonth = [...trained].filter((d) => d.startsWith(monthPrefix)).length;
-    $("#calStats").innerHTML = `<b>${inMonth}</b> ${inMonth === 1 ? "día" : "días"} este mes, <b>${trained.size}</b> en total`;
+    const streak = weekStreak(trained);
+    $("#calStats").innerHTML = [
+      [inMonth, inMonth === 1 ? "sesión este mes" : "sesiones este mes"],
+      [streak, streak === 1 ? "semana seguida" : "semanas seguidas"],
+      [trained.size, "en total"],
+    ].map(([n, l]) => `<span class="stat"><b>${n}</b>${l}</span>`).join("");
 
     const first = new Date(y, mo, 1);
     const offset = (first.getDay() + 6) % 7; // lunes primero
     const days = new Date(y, mo + 1, 0).getDate();
     const t = todayISO();
+    // sin selección en este mes: muestra el último día entrenado
+    if (!(ui.calSel && ui.calSel.startsWith(monthPrefix))) {
+      ui.calSel = [...trained].filter((d) => d.startsWith(monthPrefix) && d <= t).sort().pop() || null;
+    }
     let html = ["L", "M", "M", "J", "V", "S", "D"].map((d, i) => `<span class="cal-dow" aria-hidden="true" title="${["lunes","martes","miércoles","jueves","viernes","sábado","domingo"][i]}">${d}</span>`).join("");
     for (let i = 0; i < offset; i++) html += `<span></span>`;
     for (let d = 1; d <= days; d++) {
@@ -529,7 +591,7 @@
       const on = trained.has(iso);
       const cls = ["cal-cell", on && "is-on", prDates.has(iso) && "is-pr", iso === t && "is-today", iso === ui.calSel && "is-sel", iso > t && "is-future"].filter(Boolean).join(" ");
       const label = `${d} de ${m.toLocaleDateString("es-CL", { month: "long" })}${on ? ", entrenaste" : ""}${prDates.has(iso) ? ", récord" : ""}`;
-      html += `<button type="button" class="${cls}" data-day="${iso}" aria-label="${label}" ${iso > t ? "disabled" : ""}><span>${d}</span></button>`;
+      html += `<button type="button" class="${cls}" data-day="${iso}" aria-label="${label}" aria-pressed="${iso === ui.calSel}" ${iso > t ? "disabled" : ""}><span>${d}</span></button>`;
     }
     $("#calGrid").innerHTML = html;
     $("#calNext").disabled = y === new Date().getFullYear() && mo === new Date().getMonth();
@@ -537,13 +599,24 @@
 
     const sel = ui.calSel && ui.calSel.startsWith(monthPrefix) ? ui.calSel : null;
     $("#calDay").innerHTML = sel
-      ? (trained.has(sel) ? dayBlock(sel, prIds) : `<article class="day"><div class="day-head"><h2 class="day-date">${esc(dayLong(sel))}<small>Sin entrenamiento</small></h2><button type="button" class="day-edit" data-open-day="${sel}"><svg class="ic"><use href="#i-plus"/></svg>Registrar</button></div></article>`)
+      ? (trained.has(sel) ? dayBlock(sel, prIds) : `<article class="day"><div class="day-head"><div class="day-title"><h2 class="day-date">${esc(dayLong(sel))}</h2><p class="day-meta">Sin entrenamiento</p></div><button type="button" class="day-edit" data-open-day="${sel}"><svg class="ic"><use href="#i-plus"/></svg>Registrar</button></div></article>`)
       : (!trained.size ? emptyState("Cada día que entrenes se encenderá aquí.", "Registrar entrenamiento") : "");
+  }
+  /** Semanas seguidas (lunes a domingo) con al menos una sesión; la semana actual cuenta si ya entrenaste. */
+  function weekStreak(trained) {
+    const weekKey = (d) => { const x = new Date(d); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return toISO(x); };
+    const weeks = new Set([...trained].map((d) => weekKey(fromISO(d))));
+    const cur = new Date();
+    let wk = weekKey(cur);
+    if (!weeks.has(wk)) { cur.setDate(cur.getDate() - 7); wk = weekKey(cur); }
+    let n = 0;
+    while (weeks.has(wk)) { n++; cur.setDate(cur.getDate() - 7); wk = weekKey(cur); }
+    return n;
   }
   $("#calGrid").addEventListener("click", (e) => {
     const b = e.target.closest("[data-day]");
     if (!b) return;
-    ui.calSel = ui.calSel === b.dataset.day ? null : b.dataset.day;
+    ui.calSel = b.dataset.day;
     renderCalendar();
   });
   $("#calPrev").addEventListener("click", () => { ui.calMonth = new Date(ui.calMonth.getFullYear(), ui.calMonth.getMonth() - 1, 1); renderCalendar(); });
@@ -594,7 +667,7 @@
       <h2 class="table-title">Sesiones</h2>
       <table>
         <thead><tr><th scope="col">Fecha</th><th scope="col">Peso máx.</th><th scope="col">Mejor serie</th><th scope="col">Volumen</th></tr></thead>
-        <tbody>${[...shown].reverse().map((s) => `<tr><td>${esc(dayFull(s.date))}</td><td class="w${s.pr ? " is-pr" : ""}">${fmt(s.max)}</td><td>${fmt(s.best.weight)}×${s.best.reps}</td><td>${fmt(Math.round(s.vol))} kg</td></tr>`).join("")}</tbody>
+        <tbody>${[...shown].reverse().map((s) => `<tr><td>${esc(dayFull(s.date))}</td><td class="w${s.pr ? " is-pr" : ""}">${fmt(s.max)}</td><td>${wf(s.best.weight)}×${s.best.reps}</td><td>${fmt(Math.round(s.vol))} kg</td></tr>`).join("")}</tbody>
       </table>`;
     if (shown.length) wireChart(shown);
   }

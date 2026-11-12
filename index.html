@@ -28,6 +28,8 @@
       <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 7V4.5h4V7M6.5 7l1 13h9l1-13"/></symbol>
       <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5"/><path d="M4 15v4.5h16V15"/></symbol>
       <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></symbol>
+      <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></symbol>
+      <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
     </defs>
   </svg>
 
@@ -38,11 +40,11 @@
         <span class="date-sub" id="dateSub"></span>
         <input type="date" id="dateInput" class="date-input" tabindex="-1" aria-hidden="true">
       </button>
+      <h1 class="top-title" id="topTitle" hidden></h1>
       <button type="button" class="type-pill" id="typeBtn" hidden aria-label="Cambiar rutina del día"></button>
       <div class="topbar-right">
-        <span class="session" id="sessionTag"></span>
-        <button class="icon-btn" id="backupBtn" type="button" aria-label="Respaldo de datos">
-          <svg class="ic"><use href="#i-backup"/></svg>
+        <button class="icon-btn" id="backupBtn" type="button" aria-label="Ajustes y respaldo">
+          <svg class="ic"><use href="#i-settings"/></svg>
         </button>
       </div>
     </header>
@@ -52,7 +54,7 @@
       <section class="view" id="view-hoy" aria-label="Registrar">
         <div class="type-picker" id="typePicker" hidden>
           <h2 class="type-q" id="typeQ">¿Qué rutina toca hoy?</h2>
-          <div class="chips type-chips" id="typeChips"></div>
+          <div class="type-grid" id="typeChips"></div>
         </div>
         <div class="chips" id="chips" role="list"></div>
 
@@ -61,18 +63,19 @@
             <h1 class="ex-name" id="exName">Elige un ejercicio</h1>
             <div class="lights" id="lights" aria-hidden="true"><i></i><i></i><i></i></div>
           </div>
-          <p class="last" id="lastTime"></p>
+          <div class="last" id="lastTime"></div>
+          <div class="quick" id="quickEx"></div>
 
           <div class="dial" aria-label="Peso">
             <button class="step" type="button" data-step="weight" data-dir="-1" aria-label="Bajar peso"><svg class="ic"><use href="#i-minus"/></svg></button>
             <label class="readout">
               <input class="num big" id="weightInput" inputmode="decimal" autocomplete="off" aria-label="Peso en kilos" value="20">
-              <span class="unit">kg</span>
+              <span class="unit" id="weightUnit">kg</span>
             </label>
             <button class="step" type="button" data-step="weight" data-dir="1" aria-label="Subir peso"><svg class="ic"><use href="#i-plus"/></svg></button>
           </div>
           <div class="incs" role="group" aria-label="Cuánto suben y bajan los botones de peso">
-            <span class="incs-label">− / + de a</span>
+            <span class="incs-label">Salto</span>
             <span class="incs-opts" id="incOpts"></span>
             <button type="button" class="inc-edit" id="incEdit" aria-label="Cambiar los saltos de peso"><svg class="ic"><use href="#i-edit"/></svg></button>
           </div>
@@ -94,7 +97,6 @@
 
       <!-- HISTORIAL -->
       <section class="view" id="view-historial" aria-label="Historial" hidden>
-        <h1 class="view-title">Historial</h1>
         <div id="historyList"></div>
       </section>
 
@@ -102,18 +104,17 @@
       <section class="view" id="view-calendario" aria-label="Calendario" hidden>
         <div class="cal-head">
           <button class="icon-btn" id="calPrev" type="button" aria-label="Mes anterior"><svg class="ic"><use href="#i-left"/></svg></button>
-          <h1 class="view-title cal-title" id="calTitle"></h1>
+          <h2 class="cal-title" id="calTitle"></h2>
           <button class="icon-btn" id="calNext" type="button" aria-label="Mes siguiente"><svg class="ic"><use href="#i-right"/></svg></button>
         </div>
         <p class="cal-stats" id="calStats"></p>
         <div class="cal-grid" id="calGrid" role="grid"></div>
-        <p class="cal-legend"><span class="dot on"></span> Entrenaste <span class="dot pr"></span> Récord</p>
+        <p class="cal-legend"><span class="dot on"></span>Entrenaste<span class="dot pr"></span>Récord</p>
         <div id="calDay"></div>
       </section>
 
       <!-- PROGRESO -->
       <section class="view" id="view-progreso" aria-label="Progreso" hidden>
-        <h1 class="view-title">Progreso</h1>
         <label class="select-wrap">
           <span class="sr">Ejercicio</span>
           <select id="progEx"></select>
@@ -144,7 +145,7 @@
   <dialog class="sheet" id="exSheet" aria-labelledby="exSheetTitle">
     <form method="dialog" class="sheet-inner" id="exForm">
       <div class="sheet-head">
-        <h2 id="exSheetTitle">Ejercicio</h2>
+        <h2 id="exSheetTitle">Agregar ejercicio</h2>
         <button class="icon-btn" value="cancel" formnovalidate aria-label="Cerrar"><svg class="ic"><use href="#i-close"/></svg></button>
       </div>
       <input class="field" id="exSearch" placeholder="Busca o escribe un ejercicio nuevo" autocomplete="off" enterkeyhint="done" maxlength="60">
@@ -192,9 +193,14 @@
   <dialog class="sheet" id="backupSheet" aria-labelledby="backupTitle">
     <div class="sheet-inner">
       <div class="sheet-head">
-        <h2 id="backupTitle">Respaldo</h2>
+        <h2 id="backupTitle">Ajustes</h2>
         <button class="icon-btn" type="button" data-close aria-label="Cerrar"><svg class="ic"><use href="#i-close"/></svg></button>
       </div>
+      <button type="button" class="setting-row" id="incRow">
+        <span><b>Saltos de peso</b><small id="incSummary"></small></span>
+        <svg class="ic"><use href="#i-chev"/></svg>
+      </button>
+      <h3 class="sheet-sub">Respaldo</h3>
       <p class="sheet-text" id="backupInfo"></p>
       <button class="btn btn-primary" type="button" id="exportBtn"><svg class="ic"><use href="#i-backup"/></svg>Exportar datos</button>
       <button class="btn" type="button" id="importBtn"><svg class="ic"><use href="#i-upload"/></svg>Importar respaldo</button>
