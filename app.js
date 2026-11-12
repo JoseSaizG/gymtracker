@@ -8,7 +8,8 @@
     "Dominadas", "Jalón al pecho", "Press inclinado con mancuernas", "Prensa de piernas",
     "Hip thrust", "Zancadas", "Curl de bíceps", "Extensión de tríceps", "Elevaciones laterales", "Fondos"
   ];
-  const DEFAULT_DAY_TYPES = ["Push", "Pull", "Pierna", "Upper", "Lower", "Full body"];
+  const DEFAULT_INCS = [1, 2.5, 5];
+  const DEFAULT_DAY_TYPES =["Push", "Pull", "Pierna", "Upper", "Lower", "Full body"];
 
   /* ---------- Utilidades ---------- */
   const $ = (s, el = document) => el.querySelector(s);
@@ -51,7 +52,14 @@
       exercises: Array.isArray(raw.exercises) ? raw.exercises.filter((x) => typeof x === "string") : [],
       days,
       dayTypes: Array.isArray(raw.dayTypes) ? raw.dayTypes.filter((x) => typeof x === "string" && x.trim()) : [],
+      settings: { incs: cleanIncs(raw.settings && raw.settings.incs) || DEFAULT_INCS.slice() },
     };
+  }
+  /** Saltos válidos: entre 0,01 y 100 kg, sin repetidos, de menor a mayor, máximo 3. */
+  function cleanIncs(list) {
+    if (!Array.isArray(list)) return null;
+    const out = [...new Set(list.map(Number).filter((n) => Number.isFinite(n) && n > 0 && n <= 100).map((n) => Math.round(n * 100) / 100))].sort((a, b) => a - b).slice(0, 3);
+    return out.length ? out : null;
   }
   const dayType = (date) => (data.days[date] ? data.days[date].type : null);
   function allDayTypes() {
@@ -162,8 +170,10 @@
 
     const type = dayType(ui.date);
     const tb = $("#typeBtn");
-    tb.hidden = ui.view !== "hoy" || !type;
-    tb.textContent = type || "";
+    // visible siempre en Hoy cuando el selector grande no está a la vista
+    tb.hidden = ui.view !== "hoy" || (!type && !setsOn(ui.date).length);
+    tb.textContent = type || "Elegir rutina";
+    tb.classList.toggle("is-unset", !type);
   }
   $("#dateBtn").addEventListener("click", (e) => {
     const input = $("#dateInput");
@@ -337,7 +347,7 @@
       const dir = Number(step.dataset.dir);
       if (step.dataset.step === "weight") {
         const w = getWeight() || 0;
-        setWeight(dir > 0 ? Math.floor((w + 1e-9) / ui.inc) * ui.inc + ui.inc : Math.ceil((w - 1e-9) / ui.inc) * ui.inc - ui.inc);
+        setWeight(w + dir * ui.inc);
       } else setReps((getReps() || 0) + dir);
       return;
     }
@@ -348,8 +358,39 @@
       renderIncs();
     }
   });
-  function renderIncs() { for (const b of $$(".inc")) b.classList.toggle("is-on", parseFloat(b.dataset.inc) === ui.inc); }
+  function renderIncs() {
+    const incs = data.settings.incs;
+    if (!incs.includes(ui.inc)) ui.inc = incs.includes(2.5) ? 2.5 : incs[Math.floor((incs.length - 1) / 2)];
+    $("#incOpts").innerHTML = incs.map((n) => `<button type="button" class="inc${n === ui.inc ? " is-on" : ""}" data-inc="${n}" aria-pressed="${n === ui.inc}">${fmt(n)}</button>`).join("");
+  }
   renderIncs();
+
+  const incSheet = $("#incSheet");
+  function fillIncForm(list) {
+    const f = $("#incForm");
+    for (let i = 0; i < 3; i++) f.elements["i" + i].value = list[i] != null ? fmt(list[i]) : "";
+    $("#incError").hidden = true;
+  }
+  $("#incEdit").addEventListener("click", () => { fillIncForm(data.settings.incs); incSheet.showModal(); });
+  $("#incReset").addEventListener("click", () => fillIncForm(DEFAULT_INCS));
+  $("#incForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const raw = [0, 1, 2].map((i) => f.elements["i" + i].value.trim()).filter(Boolean);
+    const bad = raw.find((v) => { const n = parseNum(v); return !Number.isFinite(n) || n <= 0 || n > 100; });
+    const incs = cleanIncs(raw.map(parseNum));
+    const err = $("#incError");
+    if (bad || !incs) {
+      err.textContent = bad ? `"${bad}" no sirve: usa un número mayor que 0 y hasta 100, por ejemplo 1,25.` : "Pon al menos un salto, por ejemplo 2,5.";
+      err.hidden = false;
+      return;
+    }
+    data.settings.incs = incs;
+    save();
+    renderIncs();
+    incSheet.close();
+    toast(`Saltos guardados: ${incs.map(fmt).join(", ")} kg`);
+  });
 
   for (const input of [weightInput, repsInput]) {
     input.addEventListener("focus", () => input.select());
@@ -622,7 +663,7 @@
   /* ---------- Respaldo ---------- */
   const backupSheet = $("#backupSheet"), importSheet = $("#importSheet");
   $$("[data-close]").forEach((b) => b.addEventListener("click", () => b.closest("dialog").close()));
-  for (const d of [exSheet, backupSheet, importSheet, typeSheet]) d.addEventListener("click", (e) => { if (e.target === d) d.close(); });
+  for (const d of [exSheet, backupSheet, importSheet, typeSheet, incSheet]) d.addEventListener("click", (e) => { if (e.target === d) d.close(); });
 
   $("#backupBtn").addEventListener("click", () => {
     const n = data.sets.length, s = sessionDates().length;
@@ -631,7 +672,7 @@
     backupSheet.showModal();
   });
   $("#exportBtn").addEventListener("click", () => {
-    const payload = { app: "GymTracker", version: 1, exportedAt: new Date().toISOString(), sets: [...data.sets].sort(sortSets), exercises: data.exercises, days: data.days, dayTypes: data.dayTypes };
+    const payload = { app: "GymTracker", version: 1, exportedAt: new Date().toISOString(), sets: [...data.sets].sort(sortSets), exercises: data.exercises, days: data.days, dayTypes: data.dayTypes, settings: data.settings };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -662,7 +703,7 @@
       }));
       if (!good.length) throw new Error("vacío");
       const extra = normalize(Array.isArray(json) ? {} : json);
-      pending = { sets: good, exercises: extra.exercises, days: extra.days, dayTypes: extra.dayTypes };
+      pending = { sets: good, exercises: extra.exercises, days: extra.days, dayTypes: extra.dayTypes, settings: extra.settings };
       const dates = good.map((s) => s.date).sort();
       const skipped = sets.length - good.length;
       $("#importInfo").innerHTML = `El archivo tiene <b>${good.length}</b> series del ${esc(dayFull(dates[0]))} al ${esc(dayFull(dates[dates.length - 1]))}.${skipped ? ` Se omitirán ${skipped} filas con datos incompletos.` : ""} Tienes <b>${data.sets.length}</b> series ahora en este teléfono.`;
@@ -688,7 +729,7 @@
   });
   $("#importReplace").addEventListener("click", () => {
     if (!pending) return;
-    data = normalize({ sets: pending.sets, exercises: pending.exercises, days: pending.days, dayTypes: pending.dayTypes });
+    data = normalize({ sets: pending.sets, exercises: pending.exercises, days: pending.days, dayTypes: pending.dayTypes, settings: pending.settings });
     finishImport(`Datos reemplazados: ${pending.sets.length} series`);
   });
   function finishImport(msg) {

@@ -99,6 +99,7 @@ button { cursor: pointer; }
 }
 .date-btn, .session { flex: none; white-space: nowrap; }
 .type-pill:active { background: rgba(242,194,48,.12); }
+.type-pill.is-unset { border-style: dashed; border-color: var(--ink-3); color: var(--ink-2); font-size: 15px; }
 .type-picker { margin: 2px 0 6px; }
 .type-q { margin: 0 0 6px; font: 600 20px/1.2 var(--font-board); }
 .type-chips { padding-bottom: 10px; }
@@ -207,6 +208,18 @@ button { cursor: pointer; }
 }
 .inc::after { content: " kg"; font-size: 12px; }
 .inc.is-on { border-color: var(--ink-2); color: var(--ink); background: var(--panel-2); }
+.incs-opts { display: flex; gap: 6px; }
+.inc-edit {
+  width: 40px; height: 40px; display: grid; place-items: center; flex: none;
+  border: 0; border-radius: 999px; background: none; color: var(--ink-3);
+}
+.inc-edit .ic { width: 18px; height: 18px; }
+.inc-edit:active { background: var(--panel-2); color: var(--ink); }
+.inc-fields { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.inc-fields label { position: relative; display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--ink-2); }
+.inc-fields .field { font: 600 24px/1 var(--font-board); text-align: center; padding: 0 28px 0 10px; font-variant-numeric: tabular-nums; }
+.inc-fields em { position: absolute; right: 12px; bottom: 19px; font-style: normal; font-size: 13px; color: var(--ink-3); pointer-events: none; }
+.sheet-error { margin: 0; color: var(--red); font-size: 15px; }
 
 /* ---------- Today's sets ---------- */
 .today { margin-top: 18px; }

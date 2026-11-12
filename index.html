@@ -73,9 +73,8 @@
           </div>
           <div class="incs" role="group" aria-label="Cuánto suben y bajan los botones de peso">
             <span class="incs-label">− / + de a</span>
-            <button type="button" class="inc" data-inc="1">1</button>
-            <button type="button" class="inc is-on" data-inc="2.5">2,5</button>
-            <button type="button" class="inc" data-inc="5">5</button>
+            <span class="incs-opts" id="incOpts"></span>
+            <button type="button" class="inc-edit" id="incEdit" aria-label="Cambiar los saltos de peso"><svg class="ic"><use href="#i-edit"/></svg></button>
           </div>
 
           <div class="dial dial-reps" aria-label="Repeticiones">
@@ -168,6 +167,25 @@
       </form>
       <button class="btn" type="button" id="typeClear">Sin rutina definida</button>
     </div>
+  </dialog>
+
+  <!-- Hoja: saltos de peso -->
+  <dialog class="sheet" id="incSheet" aria-labelledby="incTitle">
+    <form class="sheet-inner" id="incForm">
+      <div class="sheet-head">
+        <h2 id="incTitle">Saltos de peso</h2>
+        <button class="icon-btn" type="button" data-close aria-label="Cerrar"><svg class="ic"><use href="#i-close"/></svg></button>
+      </div>
+      <p class="sheet-text">Cuántos kilos suben o bajan los botones − / +. Ponlos según los discos y mancuernas de tu gym. Deja vacío el que no uses.</p>
+      <div class="inc-fields">
+        <label><span>Salto 1</span><input class="field" inputmode="decimal" autocomplete="off" name="i0"><em>kg</em></label>
+        <label><span>Salto 2</span><input class="field" inputmode="decimal" autocomplete="off" name="i1"><em>kg</em></label>
+        <label><span>Salto 3</span><input class="field" inputmode="decimal" autocomplete="off" name="i2"><em>kg</em></label>
+      </div>
+      <p class="sheet-error" id="incError" hidden></p>
+      <button class="btn btn-primary" type="submit">Guardar saltos</button>
+      <button class="btn" type="button" id="incReset">Volver a 1, 2,5 y 5 kg</button>
+    </form>
   </dialog>
 
   <!-- Hoja: respaldo -->
