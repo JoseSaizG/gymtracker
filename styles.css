@@ -242,22 +242,24 @@ ul { padding: 0; list-style: none; }
 }
 .step .ic { width: 28px; height: 28px; stroke-width: 2.5; }
 .step:active { background: var(--panel-3); transform: scale(.95); }
-.readout { position: relative; display: block; min-width: 0; }
+.readout { display: flex; flex-direction: column; align-items: stretch; min-width: 0; }
 .num {
-  width: 100%; min-width: 0; text-align: center;
+  display: block; width: 100%; min-width: 0; text-align: center;
   background: none; border: 0; border-radius: var(--r-s);
   font-family: var(--font-board); font-weight: 600; color: var(--ink);
   font-variant-numeric: tabular-nums; letter-spacing: -.01em;
-  padding: 0; caret-color: var(--yellow);
+  /* alto igual a la línea: el número no queda con espacio para deslizarse dentro del campo */
+  line-height: 1.2; height: 1.2em; padding: 0; overflow: hidden;
+  touch-action: manipulation; caret-color: var(--yellow);
   transition: background-color var(--fast) linear;
 }
 .num:focus { outline: none; background: var(--panel-2); }
-.num.big { --fs: clamp(84px, 27vw, 116px); font-size: var(--fs); line-height: 1.05; padding-bottom: 18px; }
+.num.big { --fs: clamp(84px, 27vw, 116px); font-size: var(--fs); }
 .num.big[data-len="4"] { font-size: calc(var(--fs) * .8); }
 .num.big[data-len="5"], .num.big[data-len="6"] { font-size: calc(var(--fs) * .64); }
-.num.mid { font-size: clamp(56px, 17vw, 72px); line-height: 1.05; padding-bottom: 18px; }
+.num.mid { font-size: clamp(56px, 17vw, 72px); }
 .unit {
-  position: absolute; left: 0; right: 0; bottom: 2px; text-align: center; pointer-events: none;
+  display: block; margin-top: -2px; text-align: center; pointer-events: none;
   font-size: 13px; font-weight: 600; color: var(--ink-3); letter-spacing: .02em;
 }
 .dial-reps { margin-top: var(--s2); padding-top: var(--s3); border-top: 1px solid var(--line); }

@@ -32,6 +32,14 @@
   const matches = (name, q) => { const t = norm(q).split(/\s+/).filter(Boolean); const n = norm(name); return t.every((w) => n.includes(w)); };
   const DEFAULT_DAY_TYPES =["Push", "Pull", "Pierna", "Upper", "Lower", "Full body"];
 
+  /* Si algo falla, que se vea en pantalla en vez de que un botón "no haga nada". */
+  window.addEventListener("error", (e) => {
+    const t = document.getElementById("toastText"), el = document.getElementById("toast");
+    if (!t || !el) return;
+    t.textContent = "Algo falló: " + (e.message || "error") + ". Cierra y abre la app.";
+    el.hidden = false;
+  });
+
   /* ---------- Utilidades ---------- */
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -221,7 +229,8 @@
   history.replaceState({ gt: "base" }, "");
   function goBackSilently() { ignorePops++; history.back(); }
   function openSheet(d) {
-    d.showModal();
+    if (d.open) { if (!sheetStack.includes(d)) d.close(); else return; }
+    try { d.showModal(); } catch (e) { d.setAttribute("open", ""); }
     sheetStack.push(d);
     history.pushState({ gt: "sheet" }, "");
   }

@@ -24,7 +24,7 @@ Abre http://localhost:5173
 
 ## Actualizar la app
 
-Sube los archivos cambiados al repositorio. Si cambias la lista de archivos, sube también el número en `CACHE` dentro de `sw.js` (por ejemplo `gymtracker-v2`). La app toma la versión nueva la siguiente vez que la abras con internet. Tus datos no se tocan.
+Sube los archivos cambiados al repositorio y, en cada versión, sube el número `?v=` de `styles.css`, `exercises.js` y `app.js` en `index.html` y el de `CACHE` en `sw.js`, para que el teléfono nunca mezcle archivos de versiones distintas. La app toma la versión nueva la siguiente vez que la abras con internet. Tus datos no se tocan.
 
 ## Editar la lista de ejercicios
 

@@ -1,5 +1,5 @@
 /* Service worker: guarda la app en el teléfono para que funcione sin internet. */
-const CACHE = "gymtracker-v8";
+const CACHE = "gymtracker-v9";
 const ASSETS = [
   "./",
   "index.html",
@@ -15,7 +15,7 @@ const ASSETS = [
 ];
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS.map((u) => new Request(u, { cache: "reload" })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", (e) => {
@@ -26,27 +26,29 @@ self.addEventListener("activate", (e) => {
   );
 });
 
-// HTML: red primero. Lo demás: responde desde la caché y la actualiza en segundo plano,
-// así una versión nueva publicada llega en la siguiente apertura de la app.
+// Red primero para todo (sin la caché HTTP del navegador), así la página y su código
+// siempre son de la misma versión. Sin conexión, o si la red tarda más de 4 s, usa la copia guardada.
+function fromNetwork(req) {
+  return fetch(req, { cache: "no-cache" }).then((res) => {
+    if (res.ok) {
+      const copy = res.clone();
+      caches.open(CACHE).then((c) => c.put(req.mode === "navigate" ? "index.html" : req, copy));
+    }
+    return res;
+  });
+}
+function fromCache(req) {
+  return caches.match(req.mode === "navigate" ? "index.html" : req, { ignoreSearch: true });
+}
 self.addEventListener("fetch", (e) => {
   const req = e.request;
   if (req.method !== "GET" || new URL(req.url).origin !== location.origin) return;
-  if (req.mode === "navigate") {
-    e.respondWith(
-      fetch(req)
-        .then((res) => { const copy = res.clone(); caches.open(CACHE).then((c) => c.put("index.html", copy)); return res; })
-        .catch(() => caches.match("index.html"))
-    );
-    return;
-  }
-  e.respondWith(
-    caches.match(req, { ignoreSearch: true }).then((hit) => {
-      const fresh = fetch(req).then((res) => {
-        if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); }
-        return res;
-      }).catch(() => hit);
-      if (hit) { e.waitUntil(fresh.catch(() => {})); return hit; }
-      return fresh;
-    })
-  );
+  e.respondWith(new Promise((resolve) => {
+    let settled = false;
+    const done = (r) => { if (!settled && r) { settled = true; resolve(r); } };
+    const timer = setTimeout(() => fromCache(req).then(done), 4000);
+    fromNetwork(req)
+      .then((res) => { clearTimeout(timer); done(res); })
+      .catch(() => { clearTimeout(timer); fromCache(req).then((hit) => done(hit || Response.error())); });
+  }));
 });
