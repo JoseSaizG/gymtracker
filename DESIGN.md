@@ -42,7 +42,7 @@ Color strategy: restrained board with one committed signal color. Yellow means "
 - **Última vez**: the previous session's sets as small tappable tokens that load weight × reps; the token matching the next set number is outlined. Prefill starts from set 1 of last time, then repeats today's last set.
 - **Set rows**: numbered 28px disc, value in Oswald, a new row flashes once; trash is quiet (undo exists).
 - **Peso corporal**: 0 kg displays as "PC" everywhere it is listed; the dial's unit reads "kg, peso corporal".
-- **Saltos por ejercicio**: each exercise keeps its own three step options and chosen step. Catalog exercises start from their equipment (barra 1,25/2,5/5; mancuernas 1/2/2,5; máquina y polea 2,5/5/10); the pencil edits them for that exercise only.
+- **Saltos por ejercicio**: each exercise keeps its own three step options and chosen step. Catalog exercises start from their equipment (barra 1,25/2,5/5; mancuernas 1/2/4; máquina y polea 0,625/2,5/7); weights keep up to 3 decimals; the pencil edits them for that exercise only.
 - **Catálogo** (`exercises.js`): exercises tagged with muscle groups and equipment; routines map to groups. With a routine set, chips and the idle board suggest that routine's exercises (history first, then catalog, alternating groups). The add sheet lists sticky group sections, the day's routine groups first, with your own exercises on top.
 - **−/+**: tap steps once; press-and-hold repeats, accelerating from 420ms to 60ms.
 - **Chips**: 48px pills, "Agregar ejercicio" (dashed yellow) always first, recent exercises first, count of today's sets in yellow figures. Active = white fill.

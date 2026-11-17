@@ -13,12 +13,15 @@
   /** Saltos de fábrica según el equipo: [opciones, salto elegido]. */
   const EQUIP_INCS = {
     barra: [[1.25, 2.5, 5], 2.5],
-    mancuernas: [[1, 2, 2.5], 2],
-    maquina: [[2.5, 5, 10], 5],
-    polea: [[2.5, 5, 10], 5],
+    mancuernas: [[1, 2, 4], 2],
+    maquina: [[0.625, 2.5, 7], 2.5],
+    polea: [[0.625, 2.5, 7], 2.5],
     corporal: [[1.25, 2.5, 5], 2.5],
   };
   const EQUIP_LABEL = { barra: "Barra", mancuernas: "Mancuernas", maquina: "Máquina", polea: "Polea", corporal: "Peso corporal" };
+  /** Nombres antiguos de ejercicios → nombre actual (ver GT_RENAMES en exercises.js). */
+  const RENAMES = window.GT_RENAMES || {};
+  const rename = (n) => (typeof n === "string" && RENAMES[n]) || n;
   const DEFAULT_DAY_TYPES =["Push", "Pull", "Pierna", "Upper", "Lower", "Full body"];
 
   /* ---------- Utilidades ---------- */
@@ -29,7 +32,7 @@
   const toISO = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   const fromISO = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
   const todayISO = () => toISO(new Date());
-  const numFmt = new Intl.NumberFormat("es-CL", { maximumFractionDigits: 2 });
+  const numFmt = new Intl.NumberFormat("es-CL", { maximumFractionDigits: 3 });
   const fmt = (n) => numFmt.format(n);
   /** Peso para mostrar: 0 kg es peso corporal (dominadas, fondos…). */
   const wf = (w) => (w === 0 ? "PC" : fmt(w));
@@ -45,13 +48,25 @@
   let data = load();
 
   function load() {
+    let text = null;
     try {
-      const raw = JSON.parse(localStorage.getItem(STORE_KEY));
+      text = localStorage.getItem(STORE_KEY);
+      const raw = JSON.parse(text);
       if (raw && Array.isArray(raw.sets)) return normalize(raw);
-    } catch (e) { /* datos dañados: empezar limpio */ }
+    } catch (e) {
+      // nunca perder datos: lo que no se pudo leer queda guardado aparte antes de empezar limpio
+      try { if (text) localStorage.setItem(STORE_KEY + ".rescate-" + Date.now(), text); } catch (err) {}
+    }
     return normalize({});
   }
   function normalize(raw) {
+    if (Array.isArray(raw.sets)) raw.sets = raw.sets.map((s) => (s && RENAMES[s.exercise] ? { ...s, exercise: RENAMES[s.exercise] } : s));
+    if (Array.isArray(raw.exercises)) raw.exercises = [...new Set(raw.exercises.map(rename))];
+    if (raw.exSettings && typeof raw.exSettings === "object") {
+      const o = {};
+      for (const [k, v] of Object.entries(raw.exSettings)) o[rename(k)] = o[rename(k)] || v;
+      raw.exSettings = o;
+    }
     const days = {};
     if (raw.days && typeof raw.days === "object") {
       for (const [d, v] of Object.entries(raw.days)) {
@@ -86,7 +101,7 @@
   /** Saltos válidos: entre 0,01 y 100 kg, sin repetidos, de menor a mayor, máximo 3. */
   function cleanIncs(list) {
     if (!Array.isArray(list)) return null;
-    const out = [...new Set(list.map(Number).filter((n) => Number.isFinite(n) && n > 0 && n <= 100).map((n) => Math.round(n * 100) / 100))].sort((a, b) => a - b).slice(0, 3);
+    const out = [...new Set(list.map(Number).filter((n) => Number.isFinite(n) && n > 0 && n <= 100).map((n) => Math.round(n * 1000) / 1000))].sort((a, b) => a - b).slice(0, 3);
     return out.length ? out : null;
   }
   const dayType = (date) => (data.days[date] ? data.days[date].type : null);
@@ -229,7 +244,7 @@
     setWeight(src ? src.weight : 20);
     setReps(src ? src.reps : 10);
   }
-  function setWeight(v) { weightInput.value = fmt(Math.max(0, Math.round(v * 100) / 100)); fitWeight(); }
+  function setWeight(v) { weightInput.value = fmt(Math.max(0, Math.round(v * 1000) / 1000)); fitWeight(); }
   function fitWeight() {
     weightInput.dataset.len = Math.min(6, Math.max(3, weightInput.value.length));
     $("#weightUnit").textContent = parseNum(weightInput.value) === 0 ? "kg, peso corporal" : "kg";
@@ -319,7 +334,7 @@
       } else last.innerHTML = `<span class="last-label">Primera vez con este ejercicio</span>`;
     } else last.innerHTML = `<span class="last-label">${typeHist.length ? `Empieza con uno de tu último ${esc(type)}, o elige otro arriba.` : typeRec.length ? `Sugeridos para ${esc(type)}. Toca uno para empezar.` : "Toca un ejercicio de arriba o agrega uno nuevo."}</span>`;
     // atajo: con rutina elegida y sin ejercicio, sus ejercicios a un toque
-    const quick = typeHist.length ? typeHist : typeRec;
+    const quick = typeRec; // lo que hiciste en esta rutina primero, completado con el catálogo
     $("#quickEx").innerHTML = !ui.exercise && type && quick.length
       ? quick.slice(0, 6).map((ex) => `<button type="button" class="quick-ex" data-ex="${esc(ex)}"><span>${esc(ex)}${CAT.has(ex) ? `<small>${esc(CAT.get(ex).groups[0])}</small>` : ""}</span><svg class="ic"><use href="#i-chev"/></svg></button>`).join("")
       : "";
@@ -506,7 +521,7 @@
     const reps = getReps();
     if (!Number.isFinite(weight) || weight < 0) return toast("Escribe un peso válido en kilos");
     if (!Number.isFinite(reps) || reps < 1) return toast("Las repeticiones deben ser al menos 1");
-    const set = { id: uid(), date: ui.date, exercise: ui.exercise, weight: Math.round(weight * 100) / 100, reps, ts: Date.now() };
+    const set = { id: uid(), date: ui.date, exercise: ui.exercise, weight: Math.round(weight * 1000) / 1000, reps, ts: Date.now() };
     data.sets.push(set);
     save();
     const { prIds } = computeRecords();
