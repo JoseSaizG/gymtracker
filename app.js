@@ -21,13 +21,21 @@
   const EQUIP_LABEL = { barra: "Barra", mancuernas: "Mancuernas", maquina: "Máquina", polea: "Polea", corporal: "Peso corporal" };
   /** Nombres antiguos de ejercicios → nombre actual (ver GT_RENAMES en exercises.js). */
   const RENAMES = window.GT_RENAMES || {};
-  /** Sigue la cadena de nombres (antiguo → nuevo), sin quedar en un ciclo. */
+  const norm = (s) => String(s).toLocaleLowerCase("es").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+  // nombres corregidos por la app, sin importar mayúsculas ni tildes ("peck deck" = "Peck Deck")
+  const APP_RENAMES = new Map(Object.entries(RENAMES).map(([k, v]) => [norm(k), v]));
+  /** Nombre actual de un ejercicio: sigue tus cambios de nombre y las correcciones de la app, sin ciclos. */
   function resolveName(n, map) {
     let x = n;
-    for (let i = 0; i < 12 && typeof x === "string" && map[x] && map[x] !== x; i++) x = map[x];
+    const seen = new Set();
+    while (typeof x === "string" && !seen.has(x)) {
+      seen.add(x);
+      const next = (map && map[x]) || APP_RENAMES.get(norm(x));
+      if (!next || next === x) break;
+      x = next;
+    }
     return x;
   }
-  const norm = (s) => String(s).toLocaleLowerCase("es").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
   /** Busca por palabras sueltas: "curl polea" encuentra "Curl en polea". */
   const matches = (name, q) => { const t = norm(q).split(/\s+/).filter(Boolean); const n = norm(name); return t.every((w) => n.includes(w)); };
   const DEFAULT_DAY_TYPES =["Push", "Pull", "Pierna", "Upper", "Lower", "Full body"];
@@ -86,9 +94,14 @@
   function normalize(raw) {
     const renames = {};
     if (raw.renames && typeof raw.renames === "object") {
-      for (const [k, v] of Object.entries(raw.renames)) if (typeof v === "string" && v.trim() && k !== v) renames[k] = v.trim();
+      for (const [k, v] of Object.entries(raw.renames)) {
+        if (typeof v !== "string" || !v.trim()) continue;
+        // un cambio tuyo que apunta a un nombre que la app corrigió, apunta al nombre corregido
+        const to = resolveName(v.trim(), null);
+        if (norm(to) !== norm(k)) renames[k] = to;
+      }
     }
-    const map = { ...RENAMES, ...renames };
+    const map = renames;
     const rn = (n) => resolveName(n, map);
     if (Array.isArray(raw.sets)) raw.sets = raw.sets.map((s) => (s && rn(s.exercise) !== s.exercise ? { ...s, exercise: rn(s.exercise) } : s));
     if (Array.isArray(raw.exercises)) raw.exercises = [...new Set(raw.exercises.map(rn))];
@@ -817,7 +830,7 @@
     const exact = all.some((e) => norm(e) === norm(q));
     const counts = new Map();
     for (const s of data.sets) counts.set(s.exercise, (counts.get(s.exercise) || 0) + 1);
-    const opt = (e) => `<div class="ex-row"><button type="button" class="ex-opt" data-pick="${esc(e)}"><span>${esc(e)}</span><small>${counts.get(e) ? `${counts.get(e)} series` : CAT.has(e) ? EQUIP_LABEL[CAT.get(e).equip] || "" : ""}</small></button><button type="button" class="icon-btn ex-ren" data-ren="${esc(e)}" aria-label="Cambiar nombre de ${esc(e)}"><svg class="ic"><use href="#i-edit"/></svg></button></div>`;
+    const opt = (e) => `<div class="ex-row"><button type="button" class="ex-opt" data-pick="${esc(e)}"><span>${esc(e)}</span><small>${counts.get(e) ? `${counts.get(e)} ${counts.get(e) === 1 ? "serie" : "series"}` : CAT.has(e) ? EQUIP_LABEL[CAT.get(e).equip] || "" : ""}</small></button><button type="button" class="icon-btn ex-ren" data-ren="${esc(e)}" aria-label="Cambiar nombre de ${esc(e)}"><svg class="ic"><use href="#i-edit"/></svg></button></div>`;
     const section = (title, list) => list.length ? `<h3 class="ex-sec">${esc(title)}</h3>` + list.map(opt).join("") : "";
     let html = "";
     if (q) {

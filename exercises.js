@@ -6,7 +6,8 @@
     - equipo: "barra", "mancuernas", "maquina", "polea" o "corporal"
       (define los saltos de peso por defecto de ese ejercicio)
   Dentro de cada grupo, los primeros son los que la app sugiere antes.
-  Si renombras un ejercicio que ya usaste, agrega el nombre antiguo a GT_RENAMES y el historial se actualiza solo.
+  Si renombras un ejercicio que ya usaste, agrega el nombre antiguo a GT_RENAMES y el historial se actualiza solo
+  (sin importar mayúsculas ni tildes: "peck deck" y "Peck Deck" cuentan igual).
 */
 window.GT_GROUPS = [
   "Pecho", "Hombro", "Tríceps",
@@ -29,6 +30,7 @@ window.GT_ROUTINES = {
 window.GT_RENAMES = {
   "Aperturas en máquina (pec deck)": "Pec deck",
   "Extensión de tríceps sobre la cabeza en polea": "Extensión katana unilateral en polea",
+  "Peck deck": "Pec deck",
 };
 
 window.GT_CATALOG = [
