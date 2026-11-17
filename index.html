@@ -142,6 +142,17 @@
       </section>
     </main>
 
+    <div class="rest" id="restBar" hidden role="timer" aria-live="off">
+      <div class="rest-fill" id="restFill"></div>
+      <button type="button" class="rest-adj" id="restMinus" aria-label="Quitar 15 segundos">−15</button>
+      <div class="rest-mid">
+        <span class="rest-time" id="restTime">2:00</span>
+        <span class="rest-label" id="restLabel">Descanso</span>
+      </div>
+      <button type="button" class="rest-adj" id="restPlus" aria-label="Agregar 15 segundos">+15</button>
+      <button type="button" class="rest-x" id="restClose" aria-label="Cerrar cronómetro"><svg class="ic"><use href="#i-close"/></svg></button>
+    </div>
+
     <div class="cta-wrap" id="ctaWrap">
       <button class="cta" id="logBtn" type="button">Anotar serie</button>
     </div>
@@ -243,7 +254,15 @@
         <h2 id="backupTitle">Ajustes</h2>
         <button class="icon-btn" type="button" data-close aria-label="Cerrar"><svg class="ic"><use href="#i-close"/></svg></button>
       </div>
-      <p class="sheet-note">Los saltos de peso se ajustan en cada ejercicio, con el lápiz junto a “Salto”.</p>
+      <label class="toggle-row">
+        <span><b>Cronómetro de descanso</b><small>Parte solo al anotar una serie y vibra al terminar</small></span>
+        <input type="checkbox" id="optTimer" class="switch">
+      </label>
+      <label class="toggle-row">
+        <span><b>Sonido al terminar</b><small>Además de la vibración</small></span>
+        <input type="checkbox" id="optSound" class="switch">
+      </label>
+      <p class="sheet-note">Los saltos de peso se ajustan en cada ejercicio, con el lápiz junto a “Salto”. El tiempo de descanso, con −15 / +15 en el cronómetro: queda guardado para ese ejercicio.</p>
       <h3 class="sheet-sub">Respaldo</h3>
       <p class="sheet-text" id="backupInfo"></p>
       <button class="btn btn-primary" type="button" id="exportBtn"><svg class="ic"><use href="#i-backup"/></svg>Exportar datos</button>

@@ -101,7 +101,11 @@
       exercises: Array.isArray(raw.exercises) ? raw.exercises.filter((x) => typeof x === "string") : [],
       days,
       dayTypes: Array.isArray(raw.dayTypes) ? raw.dayTypes.filter((x) => typeof x === "string" && x.trim()) : [],
-      settings: { incs: cleanIncs(raw.settings && raw.settings.incs) || DEFAULT_INCS.slice() },
+      settings: {
+        incs: cleanIncs(raw.settings && raw.settings.incs) || DEFAULT_INCS.slice(),
+        timer: !(raw.settings && raw.settings.timer === false),
+        sound: !(raw.settings && raw.settings.sound === false),
+      },
       exSettings: cleanExSettings(raw.exSettings),
       renames,
     };
@@ -117,6 +121,8 @@
       const entry = {};
       if (incs) entry.incs = incs;
       if (Number.isFinite(inc) && inc > 0) entry.inc = inc;
+      const rest = Math.round(Number(v.rest));
+      if (Number.isFinite(rest) && rest >= 15 && rest <= 900) entry.rest = rest;
       if (Object.keys(entry).length) out[ex] = entry;
     }
     return out;
@@ -200,6 +206,7 @@
     }
     for (const v of $$(".view")) v.hidden = v.id !== "view-" + view;
     $("#ctaWrap").hidden = view !== "hoy";
+    document.body.dataset.view = view;
     $("#dateBtn").hidden = view !== "hoy";
     if (view !== "hoy") $("#typeBtn").hidden = true;
     const titles = { historial: "Historial", calendario: "Calendario", progreso: "Progreso" };
@@ -610,9 +617,11 @@
     const row = $(".set-row.is-new");
     if (row) row.scrollIntoView({ block: "nearest", behavior: "smooth" });
     const n = data.sets.filter((s) => s.date === set.date && s.exercise === set.exercise).length;
+    startRest(set.exercise);
     toast(record ? `Récord: ${fmt(set.weight)} kg en ${set.exercise}` : `Serie ${n} anotada`, "Deshacer", () => {
       data.sets = data.sets.filter((s) => s.id !== set.id);
       save(); render();
+      stopRest();
     }, record);
   }
 
@@ -656,6 +665,123 @@
     setSheet.close();
     deleteSet(id);
   });
+
+  /* ---------- Cronómetro de descanso ----------
+     Parte solo al anotar una serie. El tiempo se calcula con la hora real (no con ticks),
+     así sigue exacto aunque Android frene la página. Mientras corre, mantiene la pantalla
+     encendida para que la app siga activa y pueda vibrar y sonar al terminar. */
+  const REST_KEY = "gymtracker.rest";
+  const restBar = $("#restBar");
+  let rest = null;          // { ex, total, endAt, done }
+  let restTick = null, wakeLock = null, audioCtx = null;
+  const fmtClock = (sec) => `${Math.floor(sec / 60)}:${pad(Math.floor(sec % 60))}`;
+  function defaultRest(ex) { return CAT.has(ex) && CAT.get(ex).equip === "barra" ? 120 : 90; }
+  const restFor = (ex) => (data.exSettings[ex] && data.exSettings[ex].rest) || defaultRest(ex);
+
+  function startRest(ex) {
+    if (!data.settings.timer) return;
+    const total = restFor(ex);
+    rest = { ex, total, endAt: Date.now() + total * 1000, done: false };
+    persistRest();
+    ensureAudio();
+    keepAwake();
+    runRest();
+  }
+  function stopRest() {
+    rest = null;
+    persistRest();
+    clearInterval(restTick); restTick = null;
+    releaseAwake();
+    restBar.hidden = true;
+    document.body.classList.remove("has-rest");
+  }
+  function adjustRest(delta) {
+    if (!rest) return;
+    const left = Math.max(0, (rest.endAt - Date.now()) / 1000);
+    const newLeft = Math.max(5, (rest.done ? 0 : left) + delta);
+    rest.total = Math.max(15, Math.min(900, rest.total + delta));
+    rest.endAt = Date.now() + newLeft * 1000;
+    rest.done = false;
+    // el ajuste queda guardado como el descanso de ese ejercicio
+    exSet(rest.ex).rest = rest.total;
+    save(); persistRest(); keepAwake(); runRest();
+  }
+  function runRest() {
+    clearInterval(restTick);
+    restBar.hidden = false;
+    document.body.classList.add("has-rest");
+    paintRest();
+    restTick = setInterval(paintRest, 250);
+  }
+  function paintRest() {
+    if (!rest) return;
+    const left = (rest.endAt - Date.now()) / 1000;
+    if (left <= 0 && !rest.done) finishRest();
+    const over = -left;
+    restBar.classList.toggle("is-done", rest.done);
+    $("#restTime").textContent = rest.done ? `+${fmtClock(over)}` : fmtClock(Math.ceil(left));
+    $("#restLabel").textContent = rest.done ? "¡Siguiente serie!" : `Descanso, ${rest.ex}`;
+    $("#restFill").style.transform = `scaleX(${rest.done ? 0 : Math.max(0, Math.min(1, left / rest.total))})`;
+    // pasados 3 minutos de la hora, se guarda solo
+    if (rest.done && over > 180) stopRest();
+  }
+  function finishRest() {
+    rest.done = true;
+    persistRest();
+    if (document.visibilityState === "visible") alertRest();
+    else rest.pendingAlert = true;
+    // se suelta la pantalla un rato después de avisar
+    setTimeout(() => { if (!rest || rest.done) releaseAwake(); }, 20000);
+  }
+  function alertRest() {
+    if (navigator.vibrate) navigator.vibrate([400, 160, 400, 160, 600]);
+    if (data.settings.sound) beep();
+    const l = $("#lights");
+    l.classList.remove("is-good", "is-record"); void l.offsetWidth; l.classList.add("is-record");
+    setTimeout(() => l.classList.remove("is-record"), 1400);
+  }
+  function ensureAudio() {
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === "suspended") audioCtx.resume();
+    } catch (e) { audioCtx = null; }
+  }
+  function beep() {
+    if (!audioCtx) return;
+    try {
+      const t0 = audioCtx.currentTime;
+      [0, 0.28, 0.56].forEach((d, i) => {
+        const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.type = "square"; o.frequency.value = i === 2 ? 1320 : 880;
+        g.gain.setValueAtTime(0.0001, t0 + d);
+        g.gain.exponentialRampToValueAtTime(0.25, t0 + d + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + d + 0.22);
+        o.connect(g).connect(audioCtx.destination);
+        o.start(t0 + d); o.stop(t0 + d + 0.25);
+      });
+    } catch (e) {}
+  }
+  async function keepAwake() {
+    try { if ("wakeLock" in navigator && !wakeLock) { wakeLock = await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release", () => { wakeLock = null; }); } } catch (e) { wakeLock = null; }
+  }
+  function releaseAwake() { try { if (wakeLock) wakeLock.release(); } catch (e) {} wakeLock = null; }
+  function persistRest() { try { if (rest) localStorage.setItem(REST_KEY, JSON.stringify(rest)); else localStorage.removeItem(REST_KEY); } catch (e) {} }
+  // al volver a la app: si terminó mientras no mirabas, avisa ahora; si sigue, vuelve a pedir pantalla encendida
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible" || !rest) return;
+    paintRest();
+    if (rest && rest.done && rest.pendingAlert) { rest.pendingAlert = false; alertRest(); }
+    if (rest && !rest.done) keepAwake();
+  });
+  $("#restMinus").addEventListener("click", () => adjustRest(-15));
+  $("#restPlus").addEventListener("click", () => adjustRest(15));
+  $("#restClose").addEventListener("click", stopRest);
+  // si la app se recargó a mitad de un descanso, lo retoma
+  try {
+    const saved = JSON.parse(localStorage.getItem(REST_KEY));
+    if (saved && saved.endAt && Date.now() - saved.endAt < 180000) { rest = saved; runRest(); if (!rest.done) keepAwake(); }
+    else localStorage.removeItem(REST_KEY);
+  } catch (e) {}
 
   let lightTimer;
   function flashLights(record) {
@@ -1020,10 +1146,19 @@
 
   $("#backupBtn").addEventListener("click", () => {
     const n = data.sets.length, s = sessionDates().length;
+    $("#optTimer").checked = data.settings.timer;
+    $("#optSound").checked = data.settings.sound;
+    $("#optSound").disabled = !data.settings.timer;
     $("#backupInfo").innerHTML = n ? `Tienes <b>${n}</b> series en <b>${s}</b> ${s === 1 ? "sesión" : "sesiones"}.` : "Aún no tienes datos para respaldar.";
     $("#exportBtn").disabled = !n;
     openSheet(backupSheet);
   });
+  $("#optTimer").addEventListener("change", (e) => {
+    data.settings.timer = e.target.checked; save();
+    $("#optSound").disabled = !e.target.checked;
+    if (!e.target.checked) stopRest();
+  });
+  $("#optSound").addEventListener("change", (e) => { data.settings.sound = e.target.checked; save(); });
   $("#exportBtn").addEventListener("click", () => {
     const payload = { app: "GymTracker", version: 1, exportedAt: new Date().toISOString(), sets: [...data.sets].sort(sortSets), exercises: data.exercises, days: data.days, dayTypes: data.dayTypes, settings: data.settings, exSettings: data.exSettings, renames: data.renames };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
