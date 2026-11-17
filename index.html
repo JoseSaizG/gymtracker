@@ -177,7 +177,8 @@
         <h2 id="incTitle">Saltos de peso</h2>
         <button class="icon-btn" type="button" data-close aria-label="Cerrar"><svg class="ic"><use href="#i-close"/></svg></button>
       </div>
-      <p class="sheet-text">Cuántos kilos suben o bajan los botones − / +. Ponlos según los discos y mancuernas de tu gym. Deja vacío el que no uses.</p>
+      <p class="inc-for" id="incFor"></p>
+      <p class="sheet-text">Cuántos kilos suben o bajan los botones − / + en este ejercicio. Se guardan solo para él. Deja vacío el que no uses.</p>
       <div class="inc-fields">
         <label><span>Salto 1</span><input class="field" inputmode="decimal" autocomplete="off" name="i0"><em>kg</em></label>
         <label><span>Salto 2</span><input class="field" inputmode="decimal" autocomplete="off" name="i1"><em>kg</em></label>
@@ -185,7 +186,7 @@
       </div>
       <p class="sheet-error" id="incError" hidden></p>
       <button class="btn btn-primary" type="submit">Guardar saltos</button>
-      <button class="btn" type="button" id="incReset">Volver a 1, 2,5 y 5 kg</button>
+      <button class="btn" type="button" id="incReset">Volver a los de fábrica</button>
     </form>
   </dialog>
 
@@ -196,10 +197,7 @@
         <h2 id="backupTitle">Ajustes</h2>
         <button class="icon-btn" type="button" data-close aria-label="Cerrar"><svg class="ic"><use href="#i-close"/></svg></button>
       </div>
-      <button type="button" class="setting-row" id="incRow">
-        <span><b>Saltos de peso</b><small id="incSummary"></small></span>
-        <svg class="ic"><use href="#i-chev"/></svg>
-      </button>
+      <p class="sheet-note">Los saltos de peso se ajustan en cada ejercicio, con el lápiz junto a “Salto”.</p>
       <h3 class="sheet-sub">Respaldo</h3>
       <p class="sheet-text" id="backupInfo"></p>
       <button class="btn btn-primary" type="button" id="exportBtn"><svg class="ic"><use href="#i-backup"/></svg>Exportar datos</button>
@@ -227,6 +225,7 @@
     <button type="button" id="toastAction"></button>
   </div>
 
+  <script src="exercises.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

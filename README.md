@@ -26,6 +26,10 @@ Abre http://localhost:5173
 
 Sube los archivos cambiados al repositorio. Si cambias la lista de archivos, sube también el número en `CACHE` dentro de `sw.js` (por ejemplo `gymtracker-v2`). La app toma la versión nueva la siguiente vez que la abras con internet. Tus datos no se tocan.
 
+## Editar la lista de ejercicios
+
+Los ejercicios predefinidos están en `exercises.js`: cada línea es `["Nombre", ["Grupo"], "equipo"]`. Ahí también está qué grupos entrena cada rutina (Push, Pull, Pierna…). Si cambias el archivo, sube también el número de `CACHE` en `sw.js`.
+
 ## Respaldo
 
 Ícono de descarga arriba a la derecha → **Exportar datos** guarda un `.json` en Descargas. Para restaurar (o pasar a otro teléfono): **Importar respaldo** y elige combinar o reemplazar.

@@ -600,3 +600,15 @@ td.w.is-pr { color: var(--yellow); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 1ms !important; transition-duration: 1ms !important; transition-delay: 0ms !important; }
 }
+
+/* ---------- Catálogo de ejercicios ---------- */
+.ex-sec {
+  position: sticky; top: 0; z-index: 1;
+  padding: var(--s3) var(--s4) var(--s1);
+  background: var(--panel);
+  font: 600 15px/1.2 var(--font-board); letter-spacing: .02em; color: var(--yellow);
+}
+.ex-opt span { min-width: 0; }
+.quick-ex > span { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.quick-ex small { font: 500 12px/1 var(--font-ui); color: var(--ink-3); letter-spacing: 0; }
+.inc-for { font: 600 20px/1.2 var(--font-board); color: var(--yellow); margin-top: calc(var(--s1) * -1); }

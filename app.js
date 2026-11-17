@@ -3,12 +3,22 @@
   "use strict";
 
   const STORE_KEY = "gymtracker.v1";
-  const DEFAULT_EXERCISES = [
-    "Press banca", "Sentadilla", "Peso muerto", "Press militar", "Remo con barra",
-    "Dominadas", "Jalón al pecho", "Press inclinado con mancuernas", "Prensa de piernas",
-    "Hip thrust", "Zancadas", "Curl de bíceps", "Extensión de tríceps", "Elevaciones laterales", "Fondos"
-  ];
+  // catálogo editable en exercises.js
+  const CATALOG = window.GT_CATALOG || [];
+  const GROUPS = window.GT_GROUPS || [];
+  const ROUTINES = window.GT_ROUTINES || {};
+  const CAT = new Map(CATALOG.map((e) => [e.name, e]));
+  const DEFAULT_EXERCISES = CATALOG.map((e) => e.name);
   const DEFAULT_INCS = [1, 2.5, 5];
+  /** Saltos de fábrica según el equipo: [opciones, salto elegido]. */
+  const EQUIP_INCS = {
+    barra: [[1.25, 2.5, 5], 2.5],
+    mancuernas: [[1, 2, 2.5], 2],
+    maquina: [[2.5, 5, 10], 5],
+    polea: [[2.5, 5, 10], 5],
+    corporal: [[1.25, 2.5, 5], 2.5],
+  };
+  const EQUIP_LABEL = { barra: "Barra", mancuernas: "Mancuernas", maquina: "Máquina", polea: "Polea", corporal: "Peso corporal" };
   const DEFAULT_DAY_TYPES =["Push", "Pull", "Pierna", "Upper", "Lower", "Full body"];
 
   /* ---------- Utilidades ---------- */
@@ -55,7 +65,23 @@
       days,
       dayTypes: Array.isArray(raw.dayTypes) ? raw.dayTypes.filter((x) => typeof x === "string" && x.trim()) : [],
       settings: { incs: cleanIncs(raw.settings && raw.settings.incs) || DEFAULT_INCS.slice() },
+      exSettings: cleanExSettings(raw.exSettings),
     };
+  }
+  /** Saltos guardados por ejercicio: { "Press banca": { incs: [1.25, 2.5, 5], inc: 2.5 } } */
+  function cleanExSettings(obj) {
+    const out = {};
+    if (!obj || typeof obj !== "object") return out;
+    for (const [ex, v] of Object.entries(obj)) {
+      if (!v || typeof v !== "object") continue;
+      const incs = cleanIncs(v.incs);
+      const inc = Number(v.inc);
+      const entry = {};
+      if (incs) entry.incs = incs;
+      if (Number.isFinite(inc) && inc > 0) entry.inc = inc;
+      if (Object.keys(entry).length) out[ex] = entry;
+    }
+    return out;
   }
   /** Saltos válidos: entre 0,01 y 100 kg, sin repetidos, de menor a mayor, máximo 3. */
   function cleanIncs(list) {
@@ -120,13 +146,11 @@
     view: "hoy",
     date: todayISO(),
     exercise: null,
-    inc: 2.5,
     calMonth: (() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); })(),
     calSel: null,
     progEx: null,
     progRange: 0,
   };
-  try { ui.inc = parseFloat(localStorage.getItem("gymtracker.inc")) || 2.5; } catch (e) {}
 
   /* ---------- Navegación ---------- */
   function show(view) {
@@ -230,12 +254,24 @@
     for (const d of dates) for (const s of setsOn(d)) if (!out.includes(s.exercise)) out.push(s.exercise);
     return out;
   }
+  /** Ejercicios del catálogo para una rutina, alternando grupos (pecho, hombro, tríceps, pecho…). */
+  function catalogForType(type) {
+    const groups = ROUTINES[type];
+    if (!groups) return [];
+    const byGroup = groups.map((g) => CATALOG.filter((e) => e.groups[0] === g || (e.groups.includes(g) && !groups.includes(e.groups[0]))).map((e) => e.name));
+    const out = [];
+    for (let i = 0; byGroup.some((l) => i < l.length); i++) for (const l of byGroup) if (l[i] && !out.includes(l[i])) out.push(l[i]);
+    return out;
+  }
+  /** Sugerencias para la rutina: primero lo que hiciste en esa rutina, luego el catálogo. */
+  const recommendForType = (type) => [...new Set([...exercisesForType(type), ...catalogForType(type)])];
 
   function renderHoy() {
     const day = setsOn(ui.date);
     const { used } = knownExercises();
     const type = dayType(ui.date);
-    const typeEx = exercisesForType(type);
+    const typeHist = exercisesForType(type);
+    const typeRec = recommendForType(type);
 
     // rutina del día: se pregunta mientras el día no tenga una ni series
     const ask = !type && !day.length;
@@ -254,9 +290,10 @@
     }
     const { prIds } = computeRecords();
 
-    // chips: los de hoy, luego los de la misma rutina, luego recientes
+    // chips: los de hoy y luego los de la rutina; sin rutina, los recientes
     const todayEx = [...new Set(day.map((s) => s.exercise))];
-    const chipList = [...new Set([...todayEx, ...typeEx, ...used, ...(used.length < 4 ? DEFAULT_EXERCISES.slice(0, 4) : [])])].slice(0, 14);
+    const pool = type ? (typeRec.length ? typeRec : used) : [...used, ...DEFAULT_EXERCISES];
+    const chipList = [...new Set([...todayEx, ...pool])].slice(0, 16);
     if (ui.exercise && !chipList.includes(ui.exercise)) chipList.unshift(ui.exercise);
     const countFor = (ex) => day.filter((s) => s.exercise === ex).length;
     $("#chips").innerHTML = `<button type="button" class="chip is-add" id="addExChip"><svg class="ic"><use href="#i-plus"/></svg>Agregar ejercicio</button>` +
@@ -280,12 +317,14 @@
         last.innerHTML = `<span class="last-label">Última vez, ${esc(dayShort(ls.date))}</span><span class="prev-sets">${ls.sets.map((s, i) =>
           `<button type="button" class="prev${i === mine.length ? " is-next" : ""}" data-pw="${s.weight}" data-pr="${s.reps}" aria-label="Usar ${fmt(s.weight)} kilos por ${s.reps}">${wf(s.weight)}<span class="x">×</span>${s.reps}</button>`).join("")}</span>`;
       } else last.innerHTML = `<span class="last-label">Primera vez con este ejercicio</span>`;
-    } else last.innerHTML = `<span class="last-label">${typeEx.length ? `Empieza con uno de tu último ${esc(type)}, o elige otro arriba.` : "Toca un ejercicio de arriba o agrega uno nuevo."}</span>`;
-    // atajo: con rutina elegida y sin ejercicio, los de la última vez a un toque
-    $("#quickEx").innerHTML = !ui.exercise && typeEx.length
-      ? typeEx.slice(0, 6).map((ex) => `<button type="button" class="quick-ex" data-ex="${esc(ex)}"><span>${esc(ex)}</span><svg class="ic"><use href="#i-chev"/></svg></button>`).join("")
+    } else last.innerHTML = `<span class="last-label">${typeHist.length ? `Empieza con uno de tu último ${esc(type)}, o elige otro arriba.` : typeRec.length ? `Sugeridos para ${esc(type)}. Toca uno para empezar.` : "Toca un ejercicio de arriba o agrega uno nuevo."}</span>`;
+    // atajo: con rutina elegida y sin ejercicio, sus ejercicios a un toque
+    const quick = typeHist.length ? typeHist : typeRec;
+    $("#quickEx").innerHTML = !ui.exercise && type && quick.length
+      ? quick.slice(0, 6).map((ex) => `<button type="button" class="quick-ex" data-ex="${esc(ex)}"><span>${esc(ex)}${CAT.has(ex) ? `<small>${esc(CAT.get(ex).groups[0])}</small>` : ""}</span><svg class="ic"><use href="#i-chev"/></svg></button>`).join("")
       : "";
     $("#board").classList.toggle("is-idle", !ui.exercise);
+    renderIncs();
     // mientras se elige la rutina, el tablero vacío solo hace ruido
     $("#board").hidden = ask && !ui.exercise;
 
@@ -366,16 +405,16 @@
       return;
     }
     const inc = e.target.closest("[data-inc]");
-    if (inc) {
-      ui.inc = parseFloat(inc.dataset.inc);
-      try { localStorage.setItem("gymtracker.inc", ui.inc); } catch (err) {}
+    if (inc && ui.exercise) {
+      exSet(ui.exercise).inc = parseFloat(inc.dataset.inc);
+      save();
       renderIncs();
     }
   });
   /* −/+ : un toque cambia una vez; mantener presionado repite, cada vez más rápido */
   function doStep(btn) {
     const dir = Number(btn.dataset.dir);
-    if (btn.dataset.step === "weight") setWeight((getWeight() || 0) + dir * ui.inc);
+    if (btn.dataset.step === "weight") setWeight((getWeight() || 0) + dir * incsFor(ui.exercise).inc);
     else setReps((getReps() || 0) + dir);
   }
   let holdTimer = null;
@@ -393,13 +432,27 @@
   window.addEventListener("blur", stopHold);
   $("#board").addEventListener("contextmenu", (e) => { if (e.target.closest("[data-step]")) e.preventDefault(); });
 
-  function renderIncs() {
+  /* Saltos por ejercicio: lo guardado para ese ejercicio, o los de fábrica según su equipo.
+     Un ejercicio propio (fuera del catálogo) parte con los saltos generales. */
+  function factoryIncs(ex) {
+    const eq = CAT.has(ex) && EQUIP_INCS[CAT.get(ex).equip];
+    if (eq) return { incs: eq[0], inc: eq[1] };
     const incs = data.settings.incs;
-    if (!incs.includes(ui.inc)) ui.inc = incs.includes(2.5) ? 2.5 : incs[Math.floor((incs.length - 1) / 2)];
-    $("#incOpts").innerHTML = incs.map((n) => `<button type="button" class="inc${n === ui.inc ? " is-on" : ""}" data-inc="${n}" aria-pressed="${n === ui.inc}">${fmt(n)}</button>`).join("");
-    $("#incSummary").textContent = incs.map(fmt).join(", ") + " kg";
+    return { incs, inc: incs.includes(2.5) ? 2.5 : incs[Math.floor((incs.length - 1) / 2)] };
   }
-  renderIncs();
+  function incsFor(ex) {
+    const f = factoryIncs(ex);
+    const own = (ex && data.exSettings[ex]) || {};
+    const incs = own.incs || f.incs;
+    const inc = incs.includes(own.inc) ? own.inc : incs.includes(f.inc) ? f.inc : incs[Math.floor((incs.length - 1) / 2)];
+    return { incs, inc };
+  }
+  const exSet = (ex) => (data.exSettings[ex] = data.exSettings[ex] || {});
+
+  function renderIncs() {
+    const { incs, inc } = incsFor(ui.exercise);
+    $("#incOpts").innerHTML = incs.map((n) => `<button type="button" class="inc${n === inc ? " is-on" : ""}" data-inc="${n}" aria-pressed="${n === inc}">${fmt(n)}</button>`).join("");
+  }
 
   const incSheet = $("#incSheet");
   function fillIncForm(list) {
@@ -407,10 +460,15 @@
     for (let i = 0; i < 3; i++) f.elements["i" + i].value = list[i] != null ? fmt(list[i]) : "";
     $("#incError").hidden = true;
   }
-  function openIncSheet() { fillIncForm(data.settings.incs); if ($("#backupSheet").open) $("#backupSheet").close(); incSheet.showModal(); }
+  function openIncSheet() {
+    if (!ui.exercise) return;
+    $("#incTitle").textContent = "Saltos de peso";
+    $("#incFor").textContent = ui.exercise;
+    fillIncForm(incsFor(ui.exercise).incs);
+    incSheet.showModal();
+  }
   $("#incEdit").addEventListener("click", openIncSheet);
-  $("#incRow").addEventListener("click", openIncSheet);
-  $("#incReset").addEventListener("click", () => fillIncForm(DEFAULT_INCS));
+  $("#incReset").addEventListener("click", () => fillIncForm(factoryIncs(ui.exercise).incs));
   $("#incForm").addEventListener("submit", (e) => {
     e.preventDefault();
     const f = e.target;
@@ -423,11 +481,14 @@
       err.hidden = false;
       return;
     }
-    data.settings.incs = incs;
+    const own = exSet(ui.exercise);
+    const fac = factoryIncs(ui.exercise);
+    if (incs.join() === fac.incs.join()) delete own.incs; else own.incs = incs;
+    if (!Object.keys(own).length) delete data.exSettings[ui.exercise];
     save();
     renderIncs();
     incSheet.close();
-    toast(`Saltos guardados: ${incs.map(fmt).join(", ")} kg`);
+    toast(`Saltos de ${ui.exercise}: ${incs.map(fmt).join(", ")} kg`);
   });
 
   for (const input of [weightInput, repsInput]) {
@@ -491,14 +552,26 @@
   function renderExList() {
     const q = $("#exSearch").value.trim();
     const norm = (s) => s.toLocaleLowerCase("es").normalize("NFD").replace(/[̀-ͯ]/g, "");
-    const { all, used } = knownExercises();
-    const list = q ? all.filter((e) => norm(e).includes(norm(q))) : all;
+    const { all } = knownExercises();
     const exact = all.some((e) => norm(e) === norm(q));
     const counts = new Map();
     for (const s of data.sets) counts.set(s.exercise, (counts.get(s.exercise) || 0) + 1);
-    $("#exList").innerHTML =
-      (q && !exact ? `<button type="button" class="ex-opt is-new" data-pick="${esc(q)}">Agregar “${esc(q)}”<svg class="ic"><use href="#i-plus"/></svg></button>` : "") +
-      list.map((e) => `<button type="button" class="ex-opt" data-pick="${esc(e)}">${esc(e)}${used.includes(e) ? `<small>${counts.get(e)} series</small>` : ""}</button>`).join("");
+    const opt = (e) => `<button type="button" class="ex-opt" data-pick="${esc(e)}"><span>${esc(e)}</span><small>${counts.get(e) ? `${counts.get(e)} series` : CAT.has(e) ? EQUIP_LABEL[CAT.get(e).equip] || "" : ""}</small></button>`;
+    const section = (title, list) => list.length ? `<h3 class="ex-sec">${esc(title)}</h3>` + list.map(opt).join("") : "";
+    let html = "";
+    if (q) {
+      html = (!exact ? `<button type="button" class="ex-opt is-new" data-pick="${esc(q)}">Agregar “${esc(q)}”<svg class="ic"><use href="#i-plus"/></svg></button>` : "") +
+        all.filter((e) => norm(e).includes(norm(q))).map(opt).join("");
+    } else {
+      // tus ejercicios propios, luego los grupos de la rutina del día, luego el resto
+      const type = dayType(ui.date);
+      const first = ROUTINES[type] || [];
+      const order = [...first, ...GROUPS.filter((g) => !first.includes(g))];
+      const mine = all.filter((e) => !CAT.has(e));
+      html = section("Mis ejercicios", mine) +
+        order.map((g) => section(g, CATALOG.filter((e) => e.groups[0] === g).map((e) => e.name))).join("");
+    }
+    $("#exList").innerHTML = html;
   }
   $("#exSearch").addEventListener("input", renderExList);
   $("#exSearch").addEventListener("keydown", (e) => {
@@ -745,7 +818,7 @@
     backupSheet.showModal();
   });
   $("#exportBtn").addEventListener("click", () => {
-    const payload = { app: "GymTracker", version: 1, exportedAt: new Date().toISOString(), sets: [...data.sets].sort(sortSets), exercises: data.exercises, days: data.days, dayTypes: data.dayTypes, settings: data.settings };
+    const payload = { app: "GymTracker", version: 1, exportedAt: new Date().toISOString(), sets: [...data.sets].sort(sortSets), exercises: data.exercises, days: data.days, dayTypes: data.dayTypes, settings: data.settings, exSettings: data.exSettings };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -776,7 +849,7 @@
       }));
       if (!good.length) throw new Error("vacío");
       const extra = normalize(Array.isArray(json) ? {} : json);
-      pending = { sets: good, exercises: extra.exercises, days: extra.days, dayTypes: extra.dayTypes, settings: extra.settings };
+      pending = { sets: good, exercises: extra.exercises, days: extra.days, dayTypes: extra.dayTypes, settings: extra.settings, exSettings: extra.exSettings };
       const dates = good.map((s) => s.date).sort();
       const skipped = sets.length - good.length;
       $("#importInfo").innerHTML = `El archivo tiene <b>${good.length}</b> series del ${esc(dayFull(dates[0]))} al ${esc(dayFull(dates[dates.length - 1]))}.${skipped ? ` Se omitirán ${skipped} filas con datos incompletos.` : ""} Tienes <b>${data.sets.length}</b> series ahora en este teléfono.`;
@@ -798,11 +871,12 @@
     data.exercises = [...new Set([...data.exercises, ...pending.exercises])];
     data.dayTypes = [...new Set([...data.dayTypes, ...pending.dayTypes])];
     data.days = { ...pending.days, ...data.days }; // la rutina ya anotada en el teléfono manda
+    data.exSettings = { ...pending.exSettings, ...data.exSettings };
     finishImport(`Importadas ${added} series nuevas`);
   });
   $("#importReplace").addEventListener("click", () => {
     if (!pending) return;
-    data = normalize({ sets: pending.sets, exercises: pending.exercises, days: pending.days, dayTypes: pending.dayTypes, settings: pending.settings });
+    data = normalize({ sets: pending.sets, exercises: pending.exercises, days: pending.days, dayTypes: pending.dayTypes, settings: pending.settings, exSettings: pending.exSettings });
     finishImport(`Datos reemplazados: ${pending.sets.length} series`);
   });
   function finishImport(msg) {
