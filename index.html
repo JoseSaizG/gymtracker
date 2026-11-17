@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <title>GymTracker</title>
   <meta name="description" content="Registro personal de entrenamientos: series, historial, calendario y progreso. Funciona sin internet.">
   <meta name="theme-color" content="#0E1116">
@@ -29,6 +29,7 @@
       <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5"/><path d="M4 15v4.5h16V15"/></symbol>
       <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></symbol>
       <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></symbol>
       <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
     </defs>
   </svg>
@@ -52,6 +53,10 @@
     <main class="views">
       <!-- HOY -->
       <section class="view" id="view-hoy" aria-label="Registrar">
+        <div class="past-banner" id="pastBanner" hidden>
+          <span id="pastText"></span>
+          <button type="button" id="pastToday">Volver a hoy</button>
+        </div>
         <div class="type-picker" id="typePicker" hidden>
           <h2 class="type-q" id="typeQ">¿Qué rutina toca hoy?</h2>
           <div class="type-grid" id="typeChips"></div>
@@ -60,7 +65,10 @@
 
         <div class="board" id="board">
           <div class="board-head">
-            <h1 class="ex-name" id="exName">Elige un ejercicio</h1>
+            <div class="name-wrap">
+              <h1 class="ex-name" id="exName">Elige un ejercicio</h1>
+              <button type="button" class="icon-btn name-edit" id="renameBtn" hidden aria-label="Cambiar nombre del ejercicio"><svg class="ic"><use href="#i-edit"/></svg></button>
+            </div>
             <div class="lights" id="lights" aria-hidden="true"><i></i><i></i><i></i></div>
           </div>
           <div class="last" id="lastTime"></div>
@@ -69,7 +77,7 @@
           <div class="dial" aria-label="Peso">
             <button class="step" type="button" data-step="weight" data-dir="-1" aria-label="Bajar peso"><svg class="ic"><use href="#i-minus"/></svg></button>
             <label class="readout">
-              <input class="num big" id="weightInput" inputmode="decimal" autocomplete="off" aria-label="Peso en kilos" value="20">
+              <input class="num big" id="weightInput" inputmode="decimal" enterkeyhint="next" autocomplete="off" aria-label="Peso en kilos" value="20">
               <span class="unit" id="weightUnit">kg</span>
             </label>
             <button class="step" type="button" data-step="weight" data-dir="1" aria-label="Subir peso"><svg class="ic"><use href="#i-plus"/></svg></button>
@@ -83,7 +91,7 @@
           <div class="dial dial-reps" aria-label="Repeticiones">
             <button class="step" type="button" data-step="reps" data-dir="-1" aria-label="Bajar repeticiones"><svg class="ic"><use href="#i-minus"/></svg></button>
             <label class="readout">
-              <input class="num mid" id="repsInput" inputmode="numeric" autocomplete="off" aria-label="Repeticiones" value="10">
+              <input class="num mid" id="repsInput" inputmode="numeric" enterkeyhint="done" autocomplete="off" aria-label="Repeticiones" value="10">
               <span class="unit">reps</span>
             </label>
             <button class="step" type="button" data-step="reps" data-dir="1" aria-label="Subir repeticiones"><svg class="ic"><use href="#i-plus"/></svg></button>
@@ -97,6 +105,11 @@
 
       <!-- HISTORIAL -->
       <section class="view" id="view-historial" aria-label="Historial" hidden>
+        <label class="search" id="histSearchWrap">
+          <svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>
+          <span class="sr">Buscar en el historial</span>
+          <input type="search" id="histSearch" placeholder="Buscar ejercicio en el historial" autocomplete="off" enterkeyhint="search">
+        </label>
         <div id="historyList"></div>
       </section>
 
@@ -180,13 +193,46 @@
       <p class="inc-for" id="incFor"></p>
       <p class="sheet-text">Cuántos kilos suben o bajan los botones − / + en este ejercicio. Se guardan solo para él. Deja vacío el que no uses.</p>
       <div class="inc-fields">
-        <label><span>Salto 1</span><input class="field" inputmode="decimal" autocomplete="off" name="i0"><em>kg</em></label>
-        <label><span>Salto 2</span><input class="field" inputmode="decimal" autocomplete="off" name="i1"><em>kg</em></label>
-        <label><span>Salto 3</span><input class="field" inputmode="decimal" autocomplete="off" name="i2"><em>kg</em></label>
+        <label><span>Salto 1</span><input class="field" inputmode="decimal" enterkeyhint="next" autocomplete="off" name="i0"><em>kg</em></label>
+        <label><span>Salto 2</span><input class="field" inputmode="decimal" enterkeyhint="next" autocomplete="off" name="i1"><em>kg</em></label>
+        <label><span>Salto 3</span><input class="field" inputmode="decimal" enterkeyhint="done" autocomplete="off" name="i2"><em>kg</em></label>
       </div>
       <p class="sheet-error" id="incError" hidden></p>
       <button class="btn btn-primary" type="submit">Guardar saltos</button>
       <button class="btn" type="button" id="incReset">Volver a los de fábrica</button>
+    </form>
+  </dialog>
+
+  <!-- Hoja: editar una serie -->
+  <dialog class="sheet" id="setSheet" aria-labelledby="setTitle">
+    <form class="sheet-inner" id="setForm">
+      <div class="sheet-head">
+        <h2 id="setTitle">Serie</h2>
+        <button class="icon-btn" type="button" data-close aria-label="Cerrar"><svg class="ic"><use href="#i-close"/></svg></button>
+      </div>
+      <p class="inc-for" id="setFor"></p>
+      <div class="set-fields">
+        <label><span>Peso</span><input class="field" name="w" inputmode="decimal" enterkeyhint="next" autocomplete="off"><em>kg</em></label>
+        <label><span>Repeticiones</span><input class="field" name="r" inputmode="numeric" enterkeyhint="done" autocomplete="off"><em>reps</em></label>
+      </div>
+      <p class="sheet-error" id="setError" hidden></p>
+      <button class="btn btn-primary" type="submit">Guardar cambios</button>
+      <button class="btn btn-danger" type="button" id="setDelete"><svg class="ic"><use href="#i-trash"/></svg>Borrar serie</button>
+    </form>
+  </dialog>
+
+  <!-- Hoja: cambiar nombre de un ejercicio -->
+  <dialog class="sheet" id="renameSheet" aria-labelledby="renameTitle">
+    <form class="sheet-inner" id="renameForm">
+      <div class="sheet-head">
+        <h2 id="renameTitle">Cambiar nombre</h2>
+        <button class="icon-btn" type="button" data-close aria-label="Cerrar"><svg class="ic"><use href="#i-close"/></svg></button>
+      </div>
+      <p class="sheet-note">Nombre actual: <b id="renameFor"></b></p>
+      <input class="field" id="renameInput" maxlength="60" autocomplete="off" enterkeyhint="done" aria-label="Nombre nuevo">
+      <p class="sheet-text">Se actualiza en todo tu historial, tu progreso y tus saltos de peso.</p>
+      <p class="sheet-error" id="renameWarn" hidden></p>
+      <button class="btn btn-primary" type="submit" id="renameSave">Guardar nombre</button>
     </form>
   </dialog>
 

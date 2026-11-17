@@ -4,11 +4,11 @@
 
   const STORE_KEY = "gymtracker.v1";
   // catálogo editable en exercises.js
-  const CATALOG = window.GT_CATALOG || [];
+  const BASE_CATALOG = window.GT_CATALOG || [];
   const GROUPS = window.GT_GROUPS || [];
   const ROUTINES = window.GT_ROUTINES || {};
-  const CAT = new Map(CATALOG.map((e) => [e.name, e]));
-  const DEFAULT_EXERCISES = CATALOG.map((e) => e.name);
+  // el catálogo se muestra con los nombres que el usuario haya puesto (data.renames)
+  let CATALOG = [], CAT = new Map(), DEFAULT_EXERCISES = [];
   const DEFAULT_INCS = [1, 2.5, 5];
   /** Saltos de fábrica según el equipo: [opciones, salto elegido]. */
   const EQUIP_INCS = {
@@ -21,7 +21,15 @@
   const EQUIP_LABEL = { barra: "Barra", mancuernas: "Mancuernas", maquina: "Máquina", polea: "Polea", corporal: "Peso corporal" };
   /** Nombres antiguos de ejercicios → nombre actual (ver GT_RENAMES en exercises.js). */
   const RENAMES = window.GT_RENAMES || {};
-  const rename = (n) => (typeof n === "string" && RENAMES[n]) || n;
+  /** Sigue la cadena de nombres (antiguo → nuevo), sin quedar en un ciclo. */
+  function resolveName(n, map) {
+    let x = n;
+    for (let i = 0; i < 12 && typeof x === "string" && map[x] && map[x] !== x; i++) x = map[x];
+    return x;
+  }
+  const norm = (s) => String(s).toLocaleLowerCase("es").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+  /** Busca por palabras sueltas: "curl polea" encuentra "Curl en polea". */
+  const matches = (name, q) => { const t = norm(q).split(/\s+/).filter(Boolean); const n = norm(name); return t.every((w) => n.includes(w)); };
   const DEFAULT_DAY_TYPES =["Push", "Pull", "Pierna", "Upper", "Lower", "Full body"];
 
   /* ---------- Utilidades ---------- */
@@ -46,6 +54,14 @@
 
   /* ---------- Datos ---------- */
   let data = load();
+  function buildCatalog() {
+    const seen = new Set();
+    CATALOG = BASE_CATALOG.map((e) => ({ ...e, name: resolveName(e.name, data.renames) }))
+      .filter((e) => !seen.has(e.name) && seen.add(e.name));
+    CAT = new Map(CATALOG.map((e) => [e.name, e]));
+    DEFAULT_EXERCISES = CATALOG.map((e) => e.name);
+  }
+  buildCatalog();
 
   function load() {
     let text = null;
@@ -60,11 +76,17 @@
     return normalize({});
   }
   function normalize(raw) {
-    if (Array.isArray(raw.sets)) raw.sets = raw.sets.map((s) => (s && RENAMES[s.exercise] ? { ...s, exercise: RENAMES[s.exercise] } : s));
-    if (Array.isArray(raw.exercises)) raw.exercises = [...new Set(raw.exercises.map(rename))];
+    const renames = {};
+    if (raw.renames && typeof raw.renames === "object") {
+      for (const [k, v] of Object.entries(raw.renames)) if (typeof v === "string" && v.trim() && k !== v) renames[k] = v.trim();
+    }
+    const map = { ...RENAMES, ...renames };
+    const rn = (n) => resolveName(n, map);
+    if (Array.isArray(raw.sets)) raw.sets = raw.sets.map((s) => (s && rn(s.exercise) !== s.exercise ? { ...s, exercise: rn(s.exercise) } : s));
+    if (Array.isArray(raw.exercises)) raw.exercises = [...new Set(raw.exercises.map(rn))];
     if (raw.exSettings && typeof raw.exSettings === "object") {
       const o = {};
-      for (const [k, v] of Object.entries(raw.exSettings)) o[rename(k)] = o[rename(k)] || v;
+      for (const [k, v] of Object.entries(raw.exSettings)) o[rn(k)] = o[rn(k)] || v;
       raw.exSettings = o;
     }
     const days = {};
@@ -81,6 +103,7 @@
       dayTypes: Array.isArray(raw.dayTypes) ? raw.dayTypes.filter((x) => typeof x === "string" && x.trim()) : [],
       settings: { incs: cleanIncs(raw.settings && raw.settings.incs) || DEFAULT_INCS.slice() },
       exSettings: cleanExSettings(raw.exSettings),
+      renames,
     };
   }
   /** Saltos guardados por ejercicio: { "Press banca": { incs: [1.25, 2.5, 5], inc: 2.5 } } */
@@ -185,7 +208,31 @@
     render();
     window.scrollTo(0, 0);
   }
-  $$(".tab").forEach((t) => t.addEventListener("click", () => show(t.dataset.view)));
+  /* Botón Atrás de Android: cierra la hoja abierta; en otra pestaña vuelve a Hoy; solo desde Hoy sale. */
+  const sheetStack = [];
+  let ignorePops = 0;
+  history.replaceState({ gt: "base" }, "");
+  function goBackSilently() { ignorePops++; history.back(); }
+  function openSheet(d) {
+    d.showModal();
+    sheetStack.push(d);
+    history.pushState({ gt: "sheet" }, "");
+  }
+  window.addEventListener("popstate", () => {
+    if (ignorePops > 0) { ignorePops--; return; }
+    const top = sheetStack[sheetStack.length - 1];
+    if (top) { top._byPop = true; top.close(); return; }
+    if (ui.view !== "hoy") show("hoy");
+  });
+  function goTab(view) {
+    if (view === ui.view) return;
+    const inTab = history.state && history.state.gt === "tab";
+    if (view === "hoy") { if (inTab) goBackSilently(); }
+    else if (inTab) history.replaceState({ gt: "tab" }, "");
+    else history.pushState({ gt: "tab" }, "");
+    show(view);
+  }
+  $$(".tab").forEach((t) => t.addEventListener("click", () => goTab(t.dataset.view)));
   // la cabecera marca su borde solo cuando hay contenido pasando por debajo
   const onScroll = () => $(".topbar").classList.toggle("is-scrolled", window.scrollY > 4);
   window.addEventListener("scroll", onScroll, { passive: true });
@@ -209,6 +256,10 @@
     $("#dateInput").value = ui.date;
     $("#dateInput").max = t;
 
+    const banner = $("#pastBanner");
+    banner.hidden = diff === 0;
+    if (diff !== 0) $("#pastText").textContent = `Registrando el ${fromISO(ui.date).toLocaleDateString("es-CL", { weekday: "long", day: "numeric", month: "long" })}`;
+
     const type = dayType(ui.date);
     const tb = $("#typeBtn");
     // visible siempre en Hoy cuando el selector grande no está a la vista
@@ -220,6 +271,7 @@
     const input = $("#dateInput");
     if (e.target !== input && input.showPicker) { try { input.showPicker(); } catch (err) { input.focus(); } }
   });
+  $("#pastToday").addEventListener("click", () => { ui.date = todayISO(); ui.exercise = null; render(); window.scrollTo(0, 0); });
   $("#dateInput").addEventListener("change", (e) => {
     if (!e.target.value) return;
     ui.date = e.target.value > todayISO() ? todayISO() : e.target.value;
@@ -320,6 +372,7 @@
     const name = $("#exName");
     name.textContent = ui.exercise || "Elige un ejercicio";
     name.classList.toggle("is-empty", !ui.exercise);
+    $("#renameBtn").hidden = !ui.exercise;
 
     // series de hoy del ejercicio actual
     const mine = day.filter((s) => s.exercise === ui.exercise);
@@ -347,8 +400,8 @@
       ? mine.map((s, i) => `
         <div class="set-row${s.id === ui.justLogged ? " is-new" : ""}">
           <span class="set-n" aria-label="Serie ${i + 1}">${i + 1}</span>
-          <button type="button" class="set-v" data-load="${s.id}" aria-label="Usar ${fmt(s.weight)} kilos por ${s.reps}">${wf(s.weight)}${s.weight ? '<span class="kg">kg</span>' : ""}<span class="x">×</span>${s.reps}${prIds.has(s.id) ? '<span class="badge">Récord</span>' : ""}</button>
-          <button type="button" class="icon-btn del" data-del="${s.id}" aria-label="Borrar serie ${i + 1}"><svg class="ic"><use href="#i-trash"/></svg></button>
+          <button type="button" class="set-v" data-edit-set="${s.id}" data-n="${i + 1}" aria-label="Editar serie ${i + 1}: ${fmt(s.weight)} kilos por ${s.reps}">${wf(s.weight)}${s.weight ? '<span class="kg">kg</span>' : ""}<span class="x">×</span>${s.reps}${prIds.has(s.id) ? '<span class="badge">Récord</span>' : ""}</button>
+          <svg class="ic set-chev" aria-hidden="true"><use href="#i-edit"/></svg>
         </div>`).join("")
       : `<p class="today-empty">Ajusta el peso y las reps y toca Anotar serie.</p>`;
     ui.justLogged = null;
@@ -383,7 +436,7 @@
     $("#typeGrid").innerHTML = allDayTypes().map((t) => `<button type="button" class="type-opt${t === cur ? " is-on" : ""}" data-type="${esc(t)}">${esc(t)}</button>`).join("");
     $("#typeNew").value = "";
     $("#typeClear").hidden = !cur;
-    typeSheet.showModal();
+    openSheet(typeSheet);
     if (focusNew) setTimeout(() => $("#typeNew").focus(), 50);
   }
   $("#typeBtn").addEventListener("click", () => openTypeSheet());
@@ -405,14 +458,9 @@
     if (e.target.closest("#addExChip")) return openExerciseSheet();
     const prev = e.target.closest("[data-pw]");
     if (prev) { setWeight(Number(prev.dataset.pw)); setReps(Number(prev.dataset.pr)); return; }
-    const load = e.target.closest("[data-load]");
-    if (load) {
-      const s = data.sets.find((x) => x.id === load.dataset.load);
-      if (s) { setWeight(s.weight); setReps(s.reps); }
-      return;
-    }
-    const del = e.target.closest("[data-del]");
-    if (del) return deleteSet(del.dataset.del);
+    const ed = e.target.closest("[data-edit-set]");
+    if (ed) return openSetSheet(ed.dataset.editSet, ed.dataset.n);
+    if (e.target.closest("#renameBtn")) return openRename(ui.exercise);
     const step = e.target.closest("[data-step]");
     if (step) {
       // el toque ya se aplicó en pointerdown; esto cubre teclado y lectores de pantalla
@@ -432,18 +480,27 @@
     if (btn.dataset.step === "weight") setWeight((getWeight() || 0) + dir * incsFor(ui.exercise).inc);
     else setReps((getReps() || 0) + dir);
   }
-  let holdTimer = null;
-  function stopHold() { clearTimeout(holdTimer); holdTimer = null; }
+  /* El salto se aplica al soltar, y solo si el dedo no se movió: así deslizar la pantalla
+     empezando sobre un botón no cambia el peso. Mantener presionado repite. */
+  let holdTimer = null, hold = null;
+  function stopHold() { clearTimeout(holdTimer); holdTimer = null; hold = null; }
   $("#board").addEventListener("pointerdown", (e) => {
     const btn = e.target.closest("[data-step]");
     if (!btn || e.button > 0) return;
     stopHold();
-    doStep(btn);
+    hold = { btn, x: e.clientX, y: e.clientY, repeated: false };
     let delay = 420;
-    const tick = () => { doStep(btn); delay = Math.max(60, delay * 0.8); holdTimer = setTimeout(tick, delay); };
+    const tick = () => { if (!hold) return; hold.repeated = true; doStep(btn); delay = Math.max(60, delay * 0.8); holdTimer = setTimeout(tick, delay); };
     holdTimer = setTimeout(tick, delay);
   });
-  for (const ev of ["pointerup", "pointercancel", "pointerleave"]) $("#board").addEventListener(ev, stopHold);
+  $("#board").addEventListener("pointermove", (e) => {
+    if (hold && Math.hypot(e.clientX - hold.x, e.clientY - hold.y) > 10) stopHold();
+  });
+  $("#board").addEventListener("pointerup", (e) => {
+    if (hold && !hold.repeated && e.target.closest("[data-step]") === hold.btn) doStep(hold.btn);
+    stopHold();
+  });
+  for (const ev of ["pointercancel", "pointerleave"]) $("#board").addEventListener(ev, stopHold);
   window.addEventListener("blur", stopHold);
   $("#board").addEventListener("contextmenu", (e) => { if (e.target.closest("[data-step]")) e.preventDefault(); });
 
@@ -480,9 +537,15 @@
     $("#incTitle").textContent = "Saltos de peso";
     $("#incFor").textContent = ui.exercise;
     fillIncForm(incsFor(ui.exercise).incs);
-    incSheet.showModal();
+    openSheet(incSheet);
   }
   $("#incEdit").addEventListener("click", openIncSheet);
+  // Enter pasa al siguiente salto; en el último, guarda
+  ["i0", "i1", "i2"].forEach((n, i, all) => $("#incForm").elements[n].addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (i < all.length - 1) $("#incForm").elements[all[i + 1]].focus(); else $("#incForm").requestSubmit();
+  }));
   $("#incReset").addEventListener("click", () => fillIncForm(factoryIncs(ui.exercise).incs));
   $("#incForm").addEventListener("submit", (e) => {
     e.preventDefault();
@@ -506,10 +569,21 @@
     toast(`Saltos de ${ui.exercise}: ${incs.map(fmt).join(", ")} kg`);
   });
 
+  /* Mientras escribes peso o reps: se oculta la barra de pestañas y "Anotar" queda sobre el teclado. */
+  let typingTimer;
   for (const input of [weightInput, repsInput]) {
-    input.addEventListener("focus", () => input.select());
-    input.addEventListener("keydown", (e) => { if (e.key === "Enter") input.blur(); });
+    input.addEventListener("focus", () => {
+      clearTimeout(typingTimer);
+      document.body.classList.add("is-typing");
+      // seleccionar todo para reemplazar de una (en Android hay que esperar un instante)
+      setTimeout(() => { try { input.setSelectionRange(0, input.value.length); } catch (e) { input.select(); } }, 30);
+    });
+    input.addEventListener("blur", () => { typingTimer = setTimeout(() => document.body.classList.remove("is-typing"), 150); });
   }
+  weightInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); repsInput.focus(); } });
+  repsInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); repsInput.blur(); } });
+  // tocar "Anotar" con el teclado abierto no debe cerrar el teclado antes de anotar
+  $("#logBtn").addEventListener("pointerdown", (e) => { if (document.activeElement === weightInput || document.activeElement === repsInput) e.preventDefault(); });
   weightInput.addEventListener("blur", () => { const w = getWeight(); setWeight(Number.isFinite(w) ? w : 0); });
   repsInput.addEventListener("blur", () => { const r = getReps(); setReps(Number.isFinite(r) ? r : 1); });
 
@@ -529,8 +603,12 @@
     flashLights(record);
     if (navigator.vibrate) navigator.vibrate(record ? [30, 60, 30] : 25);
     ui.justLogged = set.id;
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
     renderHeader();
     renderHoy();
+    // que la serie recién anotada quede a la vista, sobre el botón Anotar
+    const row = $(".set-row.is-new");
+    if (row) row.scrollIntoView({ block: "nearest", behavior: "smooth" });
     const n = data.sets.filter((s) => s.date === set.date && s.exercise === set.exercise).length;
     toast(record ? `Récord: ${fmt(set.weight)} kg en ${set.exercise}` : `Serie ${n} anotada`, "Deshacer", () => {
       data.sets = data.sets.filter((s) => s.id !== set.id);
@@ -545,6 +623,39 @@
     save(); render();
     toast("Serie borrada", "Deshacer", () => { data.sets.push(s); save(); render(); });
   }
+
+  const setSheet = $("#setSheet");
+  function openSetSheet(id, n) {
+    const s = data.sets.find((x) => x.id === id);
+    if (!s) return;
+    const f = $("#setForm");
+    f.dataset.id = id;
+    $("#setTitle").textContent = `Serie ${n}`;
+    $("#setFor").textContent = s.exercise;
+    f.elements.w.value = fmt(s.weight);
+    f.elements.r.value = s.reps;
+    $("#setError").hidden = true;
+    openSheet(setSheet);
+  }
+  $("#setForm").elements.w.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("#setForm").elements.r.focus(); } });
+  $("#setForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const s = data.sets.find((x) => x.id === f.dataset.id);
+    if (!s) return setSheet.close();
+    const w = parseNum(f.elements.w.value), r = parseInt(f.elements.r.value, 10);
+    const err = $("#setError");
+    if (!Number.isFinite(w) || w < 0) { err.textContent = "Escribe el peso en kilos, por ejemplo 62,5. Para peso corporal, 0."; err.hidden = false; return; }
+    if (!Number.isFinite(r) || r < 1) { err.textContent = "Las repeticiones deben ser al menos 1."; err.hidden = false; return; }
+    s.weight = Math.round(w * 1000) / 1000; s.reps = r;
+    save(); setSheet.close(); render();
+    toast("Serie actualizada");
+  });
+  $("#setDelete").addEventListener("click", () => {
+    const id = $("#setForm").dataset.id;
+    setSheet.close();
+    deleteSet(id);
+  });
 
   let lightTimer;
   function flashLights(record) {
@@ -561,22 +672,24 @@
   function openExerciseSheet() {
     $("#exSearch").value = "";
     renderExList();
-    exSheet.showModal();
-    setTimeout(() => $("#exSearch").focus(), 50);
+    openSheet(exSheet);
+    $("#exList").scrollTop = 0;
   }
   function renderExList() {
     const q = $("#exSearch").value.trim();
-    const norm = (s) => s.toLocaleLowerCase("es").normalize("NFD").replace(/[̀-ͯ]/g, "");
+    $("#exHint").hidden = !!q;
     const { all } = knownExercises();
     const exact = all.some((e) => norm(e) === norm(q));
     const counts = new Map();
     for (const s of data.sets) counts.set(s.exercise, (counts.get(s.exercise) || 0) + 1);
-    const opt = (e) => `<button type="button" class="ex-opt" data-pick="${esc(e)}"><span>${esc(e)}</span><small>${counts.get(e) ? `${counts.get(e)} series` : CAT.has(e) ? EQUIP_LABEL[CAT.get(e).equip] || "" : ""}</small></button>`;
+    const opt = (e) => `<div class="ex-row"><button type="button" class="ex-opt" data-pick="${esc(e)}"><span>${esc(e)}</span><small>${counts.get(e) ? `${counts.get(e)} series` : CAT.has(e) ? EQUIP_LABEL[CAT.get(e).equip] || "" : ""}</small></button><button type="button" class="icon-btn ex-ren" data-ren="${esc(e)}" aria-label="Cambiar nombre de ${esc(e)}"><svg class="ic"><use href="#i-edit"/></svg></button></div>`;
     const section = (title, list) => list.length ? `<h3 class="ex-sec">${esc(title)}</h3>` + list.map(opt).join("") : "";
     let html = "";
     if (q) {
-      html = (!exact ? `<button type="button" class="ex-opt is-new" data-pick="${esc(q)}">Agregar “${esc(q)}”<svg class="ic"><use href="#i-plus"/></svg></button>` : "") +
-        all.filter((e) => norm(e).includes(norm(q))).map(opt).join("");
+      // coincidencias primero (las que empiezan igual, arriba); "Agregar" al final
+      const found = all.filter((e) => matches(e, q)).sort((a, b) => (norm(b).startsWith(norm(q)) ? 1 : 0) - (norm(a).startsWith(norm(q)) ? 1 : 0));
+      html = (found.length ? found.map(opt).join("") : `<p class="ex-none">No hay ejercicios con “${esc(q)}”.</p>`) +
+        (!exact ? `<button type="button" class="ex-opt is-new" data-pick="${esc(q)}">Agregar “${esc(q)}” como ejercicio nuevo<svg class="ic"><use href="#i-plus"/></svg></button>` : "");
     } else {
       // tus ejercicios propios, luego los grupos de la rutina del día, luego el resto
       const type = dayType(ui.date);
@@ -584,7 +697,7 @@
       const order = [...first, ...GROUPS.filter((g) => !first.includes(g))];
       const mine = all.filter((e) => !CAT.has(e));
       html = section("Mis ejercicios", mine) +
-        order.map((g) => section(g, CATALOG.filter((e) => e.groups[0] === g).map((e) => e.name))).join("");
+        order.map((g) => section(g, [...new Set(CATALOG.filter((e) => e.groups[0] === g).map((e) => e.name))])).join("");
     }
     $("#exList").innerHTML = html;
   }
@@ -593,16 +706,78 @@
     if (e.key === "Enter") { e.preventDefault(); const first = $("#exList [data-pick]"); if (first) first.click(); }
   });
   $("#exList").addEventListener("click", (e) => {
+    const r = e.target.closest("[data-ren]");
+    if (r) return openRename(r.dataset.ren);
     const b = e.target.closest("[data-pick]");
     if (!b) return;
     exSheet.close();
     selectExercise(cap(b.dataset.pick.trim().replace(/\s+/g, " ")));
   });
 
+  /* ---------- Renombrar un ejercicio (en todo el historial) ---------- */
+  const renameSheet = $("#renameSheet");
+  function openRename(name) {
+    if (!name) return;
+    const f = $("#renameForm");
+    f.dataset.old = name;
+    delete f.dataset.merge;
+    $("#renameFor").textContent = name;
+    $("#renameInput").value = name;
+    $("#renameWarn").hidden = true;
+    $("#renameSave").textContent = "Guardar nombre";
+    openSheet(renameSheet);
+    setTimeout(() => { const i = $("#renameInput"); i.focus(); i.setSelectionRange(0, i.value.length); }, 60);
+  }
+  $("#renameInput").addEventListener("input", () => {
+    delete $("#renameForm").dataset.merge;
+    $("#renameWarn").hidden = true;
+    $("#renameSave").textContent = "Guardar nombre";
+  });
+  $("#renameForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = e.target, oldN = f.dataset.old;
+    const newN = cap($("#renameInput").value.trim().replace(/\s+/g, " ")).slice(0, 60);
+    if (!newN) { $("#renameInput").focus(); return; }
+    if (newN === oldN) { renameSheet.close(); return; }
+    const { all } = knownExercises();
+    const existing = all.find((x) => x !== oldN && norm(x) === norm(newN));
+    if (existing && f.dataset.merge !== existing) {
+      f.dataset.merge = existing;
+      $("#renameWarn").textContent = `Ya existe “${existing}”. Si continúas, las series de los dos quedan juntas como “${existing}”.`;
+      $("#renameWarn").hidden = false;
+      $("#renameSave").textContent = `Unir con “${existing}”`;
+      return;
+    }
+    const target = existing || newN;
+    renameExercise(oldN, target);
+    renameSheet.close();
+    if (exSheet.open) renderExList();
+    render();
+    toast(existing ? `Unido con ${target}` : `Ahora se llama ${target}`);
+  });
+  function renameExercise(oldN, newN) {
+    for (const s of data.sets) if (s.exercise === oldN) s.exercise = newN;
+    data.exercises = [...new Set(data.exercises.map((x) => (x === oldN ? newN : x)))];
+    if (!data.exercises.includes(newN)) data.exercises.push(newN);
+    if (data.exSettings[oldN]) {
+      if (!data.exSettings[newN]) data.exSettings[newN] = data.exSettings[oldN];
+      delete data.exSettings[oldN];
+    }
+    // los nombres del catálogo siguen la cadena; sin ciclos
+    delete data.renames[newN];
+    for (const k of Object.keys(data.renames)) if (data.renames[k] === oldN) data.renames[k] = newN;
+    data.renames[oldN] = newN;
+    for (const k of Object.keys(data.renames)) if (k === data.renames[k]) delete data.renames[k];
+    if (ui.exercise === oldN) ui.exercise = newN;
+    if (ui.progEx === oldN) ui.progEx = newN;
+    buildCatalog();
+    save();
+  }
+
   /* ---------- Bloque de un día (historial y calendario) ---------- */
-  function dayBlock(date, prIds, { withSession = true } = {}) {
+  function dayBlock(date, prIds, { withSession = true, only = null } = {}) {
     const sets = setsOn(date);
-    const exs = [...new Set(sets.map((s) => s.exercise))];
+    const exs = [...new Set(sets.map((s) => s.exercise))].filter((x) => !only || matches(x, only));
     const dates = sessionDates();
     const type = dayType(date);
     const meta = [withSession ? `Sesión ${dates.indexOf(date) + 1}` : "", `${sets.length} ${sets.length === 1 ? "serie" : "series"}`].filter(Boolean).join(", ");
@@ -622,17 +797,22 @@
     if (!b) return;
     ui.date = b.dataset.openDay;
     ui.exercise = null;
-    show("hoy");
+    goTab("hoy");
+    if (ui.view === "hoy") render();
   });
   function emptyState(text, action) {
     return `<div class="empty"><div class="lights"><i></i><i></i><i></i></div><p>${text}</p>${action ? `<button type="button" class="btn btn-primary" data-goto="hoy" style="padding:0 22px">${action}</button>` : ""}</div>`;
   }
-  document.addEventListener("click", (e) => { const g = e.target.closest("[data-goto]"); if (g) { ui.date = todayISO(); show(g.dataset.goto); } });
+  document.addEventListener("click", (e) => { const g = e.target.closest("[data-goto]"); if (g) { ui.date = todayISO(); goTab(g.dataset.goto); } });
 
   /* ---------- HISTORIAL ---------- */
   function renderHistory() {
-    const dates = sessionDates().reverse();
-    if (!dates.length) { $("#historyList").innerHTML = emptyState("Todavía no hay entrenamientos. Anota tu primera serie y aparecerá aquí.", "Registrar entrenamiento"); return; }
+    const all = sessionDates().reverse();
+    $("#histSearchWrap").hidden = !all.length;
+    if (!all.length) { $("#historyList").innerHTML = emptyState("Todavía no hay entrenamientos. Anota tu primera serie y aparecerá aquí.", "Registrar entrenamiento"); return; }
+    const q = $("#histSearch").value.trim();
+    const dates = q ? all.filter((d) => setsOn(d).some((s) => matches(s.exercise, q))) : all;
+    if (!dates.length) { $("#historyList").innerHTML = `<p class="ex-none">Ningún día con “${esc(q)}”.</p>`; return; }
     const { prIds } = computeRecords();
     let month = "", html = "";
     for (const d of dates) {
@@ -641,12 +821,15 @@
         month = m;
         const dt = fromISO(d);
         const n = dates.filter((x) => x.startsWith(m)).length;
+        // con búsqueda, el conteo es de días con ese ejercicio
         html += `<h2 class="month-sep"><span>${cap(dt.toLocaleDateString("es-CL", { month: "long" }))} ${dt.getFullYear()}</span><small>${n} ${n === 1 ? "sesión" : "sesiones"}</small></h2>`;
       }
-      html += dayBlock(d, prIds);
+      html += dayBlock(d, prIds, { only: q || null });
     }
     $("#historyList").innerHTML = html;
   }
+  $("#histSearch").addEventListener("input", renderHistory);
+  $("#histSearch").addEventListener("keydown", (e) => { if (e.key === "Enter") e.target.blur(); });
 
   /* ---------- CALENDARIO ---------- */
   function renderCalendar() {
@@ -824,16 +1007,25 @@
   /* ---------- Respaldo ---------- */
   const backupSheet = $("#backupSheet"), importSheet = $("#importSheet");
   $$("[data-close]").forEach((b) => b.addEventListener("click", () => b.closest("dialog").close()));
-  for (const d of [exSheet, backupSheet, importSheet, typeSheet, incSheet]) d.addEventListener("click", (e) => { if (e.target === d) d.close(); });
+  for (const d of $$("dialog.sheet")) {
+    d.addEventListener("click", (e) => { if (e.target === d) d.close(); });
+    // al cerrar una hoja (X, fondo o acción) se descuenta su paso del historial del botón Atrás
+    d.addEventListener("close", () => {
+      const i = sheetStack.lastIndexOf(d);
+      if (i < 0) return;
+      sheetStack.splice(i, 1);
+      if (d._byPop) d._byPop = false; else goBackSilently();
+    });
+  }
 
   $("#backupBtn").addEventListener("click", () => {
     const n = data.sets.length, s = sessionDates().length;
     $("#backupInfo").innerHTML = n ? `Tienes <b>${n}</b> series en <b>${s}</b> ${s === 1 ? "sesión" : "sesiones"}.` : "Aún no tienes datos para respaldar.";
     $("#exportBtn").disabled = !n;
-    backupSheet.showModal();
+    openSheet(backupSheet);
   });
   $("#exportBtn").addEventListener("click", () => {
-    const payload = { app: "GymTracker", version: 1, exportedAt: new Date().toISOString(), sets: [...data.sets].sort(sortSets), exercises: data.exercises, days: data.days, dayTypes: data.dayTypes, settings: data.settings, exSettings: data.exSettings };
+    const payload = { app: "GymTracker", version: 1, exportedAt: new Date().toISOString(), sets: [...data.sets].sort(sortSets), exercises: data.exercises, days: data.days, dayTypes: data.dayTypes, settings: data.settings, exSettings: data.exSettings, renames: data.renames };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -864,12 +1056,11 @@
       }));
       if (!good.length) throw new Error("vacío");
       const extra = normalize(Array.isArray(json) ? {} : json);
-      pending = { sets: good, exercises: extra.exercises, days: extra.days, dayTypes: extra.dayTypes, settings: extra.settings, exSettings: extra.exSettings };
+      pending = { sets: good, exercises: extra.exercises, days: extra.days, dayTypes: extra.dayTypes, settings: extra.settings, exSettings: extra.exSettings, renames: extra.renames };
       const dates = good.map((s) => s.date).sort();
       const skipped = sets.length - good.length;
       $("#importInfo").innerHTML = `El archivo tiene <b>${good.length}</b> series del ${esc(dayFull(dates[0]))} al ${esc(dayFull(dates[dates.length - 1]))}.${skipped ? ` Se omitirán ${skipped} filas con datos incompletos.` : ""} Tienes <b>${data.sets.length}</b> series ahora en este teléfono.`;
-      backupSheet.close();
-      importSheet.showModal();
+      openSheet(importSheet);
     } catch (err) {
       toast("Ese archivo no es un respaldo de GymTracker. Elige el .json que exportaste.");
     }
@@ -887,16 +1078,18 @@
     data.dayTypes = [...new Set([...data.dayTypes, ...pending.dayTypes])];
     data.days = { ...pending.days, ...data.days }; // la rutina ya anotada en el teléfono manda
     data.exSettings = { ...pending.exSettings, ...data.exSettings };
+    data.renames = { ...pending.renames, ...data.renames };
+    for (const s of data.sets) s.exercise = resolveName(s.exercise, data.renames);
     finishImport(`Importadas ${added} series nuevas`);
   });
   $("#importReplace").addEventListener("click", () => {
     if (!pending) return;
-    data = normalize({ sets: pending.sets, exercises: pending.exercises, days: pending.days, dayTypes: pending.dayTypes, settings: pending.settings, exSettings: pending.exSettings });
+    data = normalize({ sets: pending.sets, exercises: pending.exercises, days: pending.days, dayTypes: pending.dayTypes, settings: pending.settings, exSettings: pending.exSettings, renames: pending.renames });
     finishImport(`Datos reemplazados: ${pending.sets.length} series`);
   });
   function finishImport(msg) {
-    save(); pending = null; importSheet.close();
-    ui.exercise = null; render(); toast(msg);
+    save(); pending = null; importSheet.close(); if (backupSheet.open) backupSheet.close();
+    buildCatalog(); ui.exercise = null; render(); toast(msg);
   }
 
   /* ---------- Aviso ---------- */

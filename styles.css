@@ -612,3 +612,61 @@ td.w.is-pr { color: var(--yellow); }
 .quick-ex > span { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .quick-ex small { font: 500 12px/1 var(--font-ui); color: var(--ink-3); letter-spacing: 0; }
 .inc-for { font: 600 20px/1.2 var(--font-board); color: var(--yellow); margin-top: calc(var(--s1) * -1); }
+
+/* ---------- Teclado y ajustes de uso ---------- */
+/* escribiendo peso o reps: sin pestañas, "Anotar" justo sobre el teclado */
+body.is-typing .tabbar { display: none; }
+body.is-typing .cta-wrap { bottom: 0; padding-bottom: calc(var(--s2) + var(--safe-b)); }
+body.is-typing #view-hoy { padding-bottom: calc(var(--cta-h) + var(--s6)); }
+
+/* la hoja de ejercicios no se encoge mientras escribes: mantiene su alto sobre el teclado */
+#exSheet[open] { height: 88dvh; display: flex; flex-direction: column; }
+#exForm { flex: 1; min-height: 0; padding-bottom: 0; }
+#exSheet .ex-list { flex: 1; min-height: 0; max-height: none; padding-bottom: calc(var(--safe-b) + var(--s4)); }
+.ex-row { display: flex; align-items: stretch; border-bottom: 1px solid var(--line); }
+.ex-row .ex-opt { flex: 1; min-width: 0; border-bottom: 0; padding-right: var(--s2); }
+.ex-ren { width: 52px; height: auto; border-radius: 0; color: var(--ink-3); }
+.ex-ren .ic { width: 18px; height: 18px; }
+.ex-none { padding: var(--s4); color: var(--ink-3); font-size: 15px; }
+.ex-opt.is-new { border-top: 1px solid var(--line); }
+
+/* día pasado */
+.past-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--s3);
+  margin: 0 0 var(--s3); padding: var(--s2) var(--s2) var(--s2) var(--s3);
+  border-radius: var(--r-s); background: var(--yellow-soft); color: var(--yellow);
+  font-size: 14px; font-weight: 600;
+}
+.past-banner button {
+  flex: none; min-height: 40px; padding: 0 var(--s3); border: 0; border-radius: var(--r-pill);
+  background: var(--yellow); color: var(--yellow-ink); font-weight: 700; font-size: 14px;
+}
+
+/* nombre del ejercicio con lápiz */
+.name-wrap { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.name-edit { width: 40px; height: 40px; color: var(--ink-3); margin-left: -2px; }
+.name-edit .ic { width: 18px; height: 18px; }
+
+/* series: toda la fila se toca para editar */
+.set-row { grid-template-columns: 44px 1fr 28px; scroll-margin-bottom: calc(var(--tab-h) + var(--cta-h) + var(--safe-b) + 24px); }
+.set-v { width: 100%; }
+.set-chev { width: 16px; height: 16px; color: var(--ink-3); opacity: .7; }
+.set-row:active { background: var(--panel); }
+.set-fields { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); }
+.set-fields label { position: relative; display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--ink-2); }
+.set-fields .field { font: 600 28px/1 var(--font-board); text-align: center; padding: 0 44px 0 12px; font-variant-numeric: tabular-nums; }
+.set-fields em { position: absolute; right: 12px; bottom: 20px; font-style: normal; font-size: 13px; color: var(--ink-3); pointer-events: none; }
+.btn-danger .ic { width: 20px; height: 20px; }
+
+/* búsqueda en el historial */
+.search {
+  position: relative; display: flex; align-items: center; margin: var(--s1) 0 var(--s2);
+}
+.search .ic { position: absolute; left: 14px; width: 20px; height: 20px; color: var(--ink-3); pointer-events: none; }
+.search input {
+  width: 100%; min-height: 48px; padding: 0 var(--s4) 0 44px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-pill);
+  font-size: 16px; color: var(--ink);
+}
+.search input::placeholder { color: var(--ink-3); }
+.search input:focus { outline: none; border-color: var(--yellow); }
